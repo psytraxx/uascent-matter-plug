@@ -1,0 +1,62 @@
+# Enable CHIP (Matter)
+CONFIG_CHIP=y
+CONFIG_CHIP_PROJECT_CONFIG="src/chip_project_config.h"
+CONFIG_CHIP_DEVICE_PRODUCT_NAME="XIAO Matter Test"
+CONFIG_CHIP_DEVICE_PRODUCT_ID=32768
+CONFIG_STD_CPP17=y
+
+# Matter over Thread (no Wi-Fi/Ethernet on this board).
+CONFIG_NET_L2_OPENTHREAD=y
+CONFIG_CHIP_ENABLE_PAIRING_AUTOSTART=y
+
+# ZAP data model (copied from the Matter template sample).
+CONFIG_NCS_SAMPLE_MATTER_ZAP_FILE_PATH="${APPLICATION_CONFIG_DIR}/src/default_zap/template.zap"
+
+# BLE is used only as the commissioning transport.
+CONFIG_BT_DEVICE_NAME="XIAOMatter"
+CONFIG_CHIP_BLE_EXT_ADVERTISING=y
+CONFIG_CHIP_BLE_ADVERTISING_DURATION=60
+
+# Logging over the USB CDC-ACM console.
+CONFIG_LOG=y
+CONFIG_CHIP_APP_LOG_LEVEL=4
+CONFIG_CONSOLE=y
+CONFIG_SERIAL=y
+CONFIG_UART_CONSOLE=y
+CONFIG_USB_DEVICE_STACK=y
+CONFIG_USB_CDC_ACM=y
+CONFIG_USB_DEVICE_PRODUCT="XIAO Matter Test"
+CONFIG_USB_DEVICE_INITIALIZE_AT_BOOT=n
+CONFIG_UART_LINE_CTRL=y
+CONFIG_LOG_BUFFER_SIZE=4096
+
+# LEDs are driven directly via the devicetree GPIO aliases, so the DK
+# LED/button library is not used.
+CONFIG_DK_LIBRARY=n
+CONFIG_GPIO=y
+
+# Reset on fatal error so a wedged stack does not sit dark.
+CONFIG_RESET_ON_FATAL_ERROR=y
+
+# No factory data partition in the XIAO flash map. CHIP_FACTORY_DATA is
+# select-ed by a choice, so it must be disabled by picking the NONE branch
+# rather than by assigning it =n directly.
+CONFIG_CHIP_FACTORY_DATA_NONE=y
+
+# No MCUboot on this board, so OTA DFU is not available. CHIP_OTA_REQUESTOR
+# implies the DFU/image-manager stack, which needs a slot0_partition that the
+# UF2 flash map does not define; "imply" is weak, so disabling the leaves here
+# takes precedence and keeps flash_img.c out of the build.
+CONFIG_CHIP_OTA_REQUESTOR=n
+CONFIG_IMG_MANAGER=n
+CONFIG_MCUBOOT_IMG_MANAGER=n
+CONFIG_DFU_TARGET=n
+CONFIG_DFU_MULTI_IMAGE=n
+CONFIG_STREAM_FLASH=n
+
+# Keep the image inside the 0xC5000 app partition.
+CONFIG_LTO=y
+CONFIG_ISR_TABLES_LOCAL_DECLARATION=y
+
+# NFC onboarding is not wired up on this board.
+CONFIG_CHIP_NFC_ONBOARDING_PAYLOAD=n

@@ -1,0 +1,20 @@
+mainmenu "XIAO nRF52840 Sense Matter over Thread"
+
+# Thread networking configuration. MTD keeps the image small enough for the
+# 0xC5000 app partition; the XIAO is battery-oriented anyway.
+if OPENTHREAD
+
+choice OPENTHREAD_NORDIC_LIBRARY_CONFIGURATION
+	default OPENTHREAD_NORDIC_LIBRARY_MTD
+endchoice
+
+choice OPENTHREAD_DEVICE_TYPE
+	default OPENTHREAD_MTD
+endchoice
+
+endif # OPENTHREAD
+
+source "$(ZEPHYR_CONNECTEDHOMEIP_MODULE_DIR)/config/nrfconnect/chip-module/Kconfig.features"
+source "$(ZEPHYR_CONNECTEDHOMEIP_MODULE_DIR)/config/nrfconnect/chip-module/Kconfig.defaults"
+source "$(ZEPHYR_NRF_MODULE_DIR)/samples/matter/common/src/Kconfig"
+source "Kconfig.zephyr"
