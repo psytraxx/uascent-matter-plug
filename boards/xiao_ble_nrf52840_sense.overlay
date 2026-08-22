@@ -1,0 +1,28 @@
+/*
+ * The Matter common board layer (samples/matter/common/src/board) requires a
+ * /buttons node: board_config.h counts its children via DT_PATH(buttons) and
+ * dk_buttons_and_leds indexes them. The XIAO has no on-board user button, so
+ * expose one on pad D0 (P0.02) for the user to wire a momentary switch to
+ * ground. Without this node the sample does not compile for this board.
+ */
+
+/ {
+	buttons {
+		compatible = "gpio-keys";
+
+		button0: button_0 {
+			gpios = <&gpio0 2 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Function button (D0)";
+		};
+
+		button1: button_1 {
+			gpios = <&gpio0 3 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Switch button (D1)";
+		};
+	};
+
+	aliases {
+		sw0 = &button0;
+		sw1 = &button1;
+	};
+};

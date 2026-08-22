@@ -45,7 +45,26 @@ uses the newer `usb_device_next` stack and enabling both yields duplicate
 
 ## Matter
 
-Matter over Thread does not build for this board and is not part of the
-build; its configuration lives in `matter-wip/`. See the "Matter status"
-section of [README.md](README.md) for the board constraints (MCUboot, factory
-data) and the open `CHIP_OTA_REQUESTOR` blocker.
+The app is a Matter over Thread light switch, ported from NCS
+`samples/matter/light_switch`. It builds and links for this board.
+
+Three board constraints follow from the UF2 flash map having no
+`slot0_partition`, and each has to be disabled in a particular way:
+
+* `SB_CONFIG_BOOTLOADER_NONE=y` -- no MCUboot.
+* `CONFIG_CHIP_FACTORY_DATA_NONE=y` and `CONFIG_CHIP_BOOTLOADER_NONE=y` --
+  both are `choice` branches, so they are selected rather than assigned `=n`
+  (the MCUboot branch hard-`select`s `IMG_MANAGER`, which `=n` cannot undo).
+* `SB_CONFIG_MATTER_OTA=n` in `sysbuild.conf` -- **not** `prj.conf`. Sysbuild
+  writes `CONFIG_CHIP_OTA_REQUESTOR` into the app config *after* `prj.conf`
+  and the app `Kconfig` are merged, so setting it there has no effect.
+
+Onboarding credentials are compiled in from `prj.conf`
+(`CHIP_DEVICE_SPAKE2_PASSCODE` / `CHIP_DEVICE_DISCRIMINATOR`) rather than
+generated, so the pairing code is fixed; this only works while factory data is
+disabled. They are currently the Matter test defaults.
+
+The Matter common board layer requires a devicetree `/buttons` node, which
+this board lacks; `boards/xiao_ble_nrf52840_sense.overlay` adds one.
+
+Flash is ~86% full, so `CONFIG_LTO=y` is required to fit.

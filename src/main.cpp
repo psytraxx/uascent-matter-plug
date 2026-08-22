@@ -1,38 +1,20 @@
 /*
- * Blink test for the Seeed XIAO nRF52840 Sense on nRF Connect SDK / Zephyr.
+ * Copyright (c) 2022 Nordic Semiconductor ASA
  *
- * Cycles the status indications so all three can be checked by eye:
- *   blue blinking = pairing, green = paired, red = error.
+ * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
-#include "status_led.h"
+#include "app_task.h"
 
-#include <zephyr/kernel.h>
+#include <cstdlib>
 #include <zephyr/logging/log.h>
 
-LOG_MODULE_REGISTER(app, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(app, CONFIG_CHIP_APP_LOG_LEVEL);
 
-int main(void)
+int main()
 {
-	LOG_INF("XIAO nRF52840 Sense blink test starting");
+	CHIP_ERROR err = AppTask::Instance().StartApp();
 
-	if (StatusLedInit()) {
-		LOG_ERR("Status LED init failed");
-		return 0;
-	}
-
-	const StatusLedState cycle[] = {
-		StatusLedState::Pairing,
-		StatusLedState::Paired,
-		StatusLedState::Error,
-	};
-
-	while (true) {
-		for (StatusLedState state : cycle) {
-			StatusLedSet(state);
-			k_sleep(K_SECONDS(3));
-		}
-	}
-
-	return 0;
+	LOG_ERR("Exited with code %" CHIP_ERROR_FORMAT, err.Format());
+	return err == CHIP_NO_ERROR ? EXIT_SUCCESS : EXIT_FAILURE;
 }
