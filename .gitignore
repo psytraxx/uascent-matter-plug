@@ -14,3 +14,9 @@ compile_commands.json
 # Zephyr/west local state
 .west/
 twister-out*/
+
+# Seeed XIAO reference pinout images (docs/front.png, docs/back.png).
+# ~7.4 MB of upstream artwork; the facts we need are transcribed into
+# docs/pinout.md and docs/smart-plug-plan.md. Re-downloadable from the
+# Seeed wiki if needed.
+docs/*.png
