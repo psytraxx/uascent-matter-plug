@@ -9,21 +9,26 @@ LOG_MODULE_DECLARE(app, LOG_LEVEL_INF);
 namespace
 {
 /* xiao_ble devicetree: led0 = red, led1 = green, led2 = blue, all ACTIVE_LOW.
- * GPIO_ACTIVE_LOW is encoded in the devicetree flags, so gpio_pin_set() takes
- * logical values here (1 = lit) and the driver inverts as needed. */
+ * led3 is the plug's own red LED (overlay alias -> plug_led_red, P0.17),
+ * also ACTIVE_LOW to match. GPIO_ACTIVE_LOW is encoded in the devicetree
+ * flags, so gpio_pin_set() takes logical values here (1 = lit) and the
+ * driver inverts as needed. */
 const gpio_dt_spec sLedRed = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 const gpio_dt_spec sLedGreen = GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios);
 const gpio_dt_spec sLedBlue = GPIO_DT_SPEC_GET(DT_ALIAS(led2), gpios);
+const gpio_dt_spec sLedPlug = GPIO_DT_SPEC_GET(DT_ALIAS(led3), gpios);
 
 constexpr k_timeout_t kBlinkInterval = K_MSEC(500);
+constexpr k_timeout_t kFastBlinkInterval = K_MSEC(150);
 
-StatusLedState sState = StatusLedState::Error;
+NetworkLedState sNetworkState = NetworkLedState::Error;
+bool sRelayOn;
 bool sInitialised;
 bool sBlinkOn;
 
 k_timer sBlinkTimer;
 
-void SetChannels(bool red, bool green, bool blue)
+void SetChannels(bool red, bool green, bool blue, bool plug)
 {
 	if (!sInitialised) {
 		return;
@@ -32,6 +37,7 @@ void SetChannels(bool red, bool green, bool blue)
 	gpio_pin_set_dt(&sLedRed, red);
 	gpio_pin_set_dt(&sLedGreen, green);
 	gpio_pin_set_dt(&sLedBlue, blue);
+	gpio_pin_set_dt(&sLedPlug, plug);
 }
 
 /* Runs in ISR context; gpio_pin_set_dt() on nRF GPIO is a register write and
@@ -39,14 +45,69 @@ void SetChannels(bool red, bool green, bool blue)
 void BlinkTimerHandler(k_timer *)
 {
 	sBlinkOn = !sBlinkOn;
-	SetChannels(false, false, sBlinkOn);
+
+	switch (sNetworkState) {
+	case NetworkLedState::Pairing:
+		/* Blue blinking on-board, red blinking on the plug -- the plug
+		 * has no blue channel, so blink is the only signal it has. */
+		SetChannels(false, false, sBlinkOn, sBlinkOn);
+		break;
+	case NetworkLedState::Error:
+		/* Fast blink on both; solid red is reserved for "commissioned,
+		 * relay off" so a fault has to look different from that. */
+		SetChannels(sBlinkOn, false, false, sBlinkOn);
+		break;
+	case NetworkLedState::Paired:
+		/* The timer is stopped whenever we are in Paired state (see
+		 * Apply() below), so this branch is unreachable in practice. */
+		break;
+	}
+}
+
+/* Renders the current (sNetworkState, sRelayOn) pair. Commissioning takes
+ * precedence over relay state on both LEDs; only once it clears does the
+ * indication fall through to mirroring the relay. Idempotent -- safe to
+ * call on every state change without tracking what was rendered last. */
+void Apply()
+{
+	if (!sInitialised) {
+		return;
+	}
+
+	switch (sNetworkState) {
+	case NetworkLedState::Pairing:
+	case NetworkLedState::Error:
+		/* Blink-driven states. Apply() only reaches here from
+		 * StatusLedSetNetworkState(), never from
+		 * StatusLedSetRelayState() (that one only calls Apply() when
+		 * sNetworkState == Paired), so restarting the timer here
+		 * cannot interrupt an in-progress blink over an unrelated
+		 * relay-state change. */
+	{
+		const bool isError = sNetworkState == NetworkLedState::Error;
+		const k_timeout_t interval = isError ? kFastBlinkInterval : kBlinkInterval;
+
+		LOG_INF("Status: %s", isError ? "error (red blinking)"
+					      : "pairing mode (blue blinking)");
+		sBlinkOn = true;
+		SetChannels(isError, false, !isError, true);
+		k_timer_start(&sBlinkTimer, interval, interval);
+		break;
+	}
+
+	case NetworkLedState::Paired:
+		k_timer_stop(&sBlinkTimer);
+		LOG_INF("Status: commissioned, relay %s", sRelayOn ? "on" : "off");
+		SetChannels(false, sRelayOn, false, sRelayOn);
+		break;
+	}
 }
 
 } /* namespace */
 
 int StatusLedInit(void)
 {
-	const gpio_dt_spec *leds[] = { &sLedRed, &sLedGreen, &sLedBlue };
+	const gpio_dt_spec *leds[] = { &sLedRed, &sLedGreen, &sLedBlue, &sLedPlug };
 
 	for (const gpio_dt_spec *led : leds) {
 		if (!gpio_is_ready_dt(led)) {
@@ -67,31 +128,28 @@ int StatusLedInit(void)
 	return 0;
 }
 
-void StatusLedSet(StatusLedState state)
+void StatusLedSetNetworkState(NetworkLedState state)
 {
-	if (sInitialised && state == sState) {
+	if (sInitialised && state == sNetworkState) {
 		return;
 	}
 
-	sState = state;
-	k_timer_stop(&sBlinkTimer);
+	sNetworkState = state;
+	Apply();
+}
 
-	switch (state) {
-	case StatusLedState::Pairing:
-		LOG_INF("Status: pairing mode (blue blinking)");
-		sBlinkOn = true;
-		SetChannels(false, false, true);
-		k_timer_start(&sBlinkTimer, kBlinkInterval, kBlinkInterval);
-		break;
+void StatusLedSetRelayState(bool relayOn)
+{
+	if (sInitialised && relayOn == sRelayOn) {
+		return;
+	}
 
-	case StatusLedState::Paired:
-		LOG_INF("Status: commissioned (green)");
-		SetChannels(false, true, false);
-		break;
+	sRelayOn = relayOn;
 
-	case StatusLedState::Error:
-		LOG_ERR("Status: error (red)");
-		SetChannels(true, false, false);
-		break;
+	/* While commissioning is in progress the relay-state change is still
+	 * recorded above, but does not touch the LEDs -- Apply() will pick it
+	 * up once NetworkLedState::Paired is reported. */
+	if (sNetworkState == NetworkLedState::Paired) {
+		Apply();
 	}
 }

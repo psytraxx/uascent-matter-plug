@@ -1,9 +1,40 @@
 /*
- * The Matter common board layer (samples/matter/common/src/board) requires a
- * /buttons node: board_config.h counts its children via DT_PATH(buttons) and
- * dk_buttons_and_leds indexes them. The XIAO has no on-board user button, so
- * expose one on pad D0 (P0.02) for the user to wire a momentary switch to
- * ground. Without this node the sample does not compile for this board.
+ * Board wiring for the BL0937 mains-plug retrofit. See docs/smart-plug-plan.md
+ * for the full design; pin choices here are PROVISIONAL until the plug's PCB
+ * is traced (docs/plug-pinout.md) -- only this file should need to change
+ * once that trace confirms or corrects the assignment.
+ *
+ * Pad budget, derived from docs/pinout.md (Seeed's XIAO nRF52840 Sense
+ * reference) and cross-checked against
+ * zephyr/boards/seeed/xiao_ble/seeed_xiao_connector.dtsi:
+ *
+ *   D0 / P0.02  - plug tactile switch (short = toggle relay, long = factory
+ *                 reset; handled by the Matter common board layer's function
+ *                 button, see samples/matter/common/src/board/board.cpp)
+ *   D2 / P0.28  - BL0937 CF  (active-power pulse), ADC-capable pad kept in
+ *                 reserve in case pulse counting needs an analog fallback
+ *   D3 / P0.29  - BL0937 CF1 (V/I pulse, muxed by SEL), same ADC reasoning
+ *   D4 / P0.04  - BL0937 SEL (V/I select output)
+ *   D6 / P1.11  - relay drive (digital-only pad; the relay needs no ADC)
+ *   P0.17       - plug's own red LED (relay state indicator). This pin is
+ *                 wired on the XIAO module as CHARGE_LED but is NOT declared
+ *                 in the board devicetree and NOT on the edge connector --
+ *                 it drives the module's own (unpopulated-in-this-design)
+ *                 battery charge LED and is otherwise idle on a mains plug
+ *                 with no battery. Reusing it here frees a connector pad.
+ *
+ * The plug's status LED polarity is assumed active-low, matching the
+ * on-board RGB LED (xiao_ble_common.dtsi); confirm during tracing.
+ *
+ * D1/D5/D7-D10 are deliberately left unused as spares (D4/D5 are the I2C
+ * pair, D6/D7 the UART pair -- avoided for a possible future sensor).
+ *
+ * The relay and bl0937 nodes below carry no "compatible" -- they are plain
+ * GPIO producers with no driver binding, read directly via
+ * GPIO_DT_SPEC_GET(DT_NODELABEL(...), gpios) the same way src/status_led.cpp
+ * already reads led0/led1/led2. The plug LED instead extends the existing
+ * gpio-leds node so it keeps using the DT_ALIAS() pattern status_led.cpp
+ * already relies on.
  */
 
 / {
@@ -12,17 +43,41 @@
 
 		button0: button_0 {
 			gpios = <&gpio0 2 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
-			label = "Function button (D0)";
-		};
-
-		button1: button_1 {
-			gpios = <&gpio0 3 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
-			label = "Switch button (D1)";
+			label = "Plug switch (D0)";
 		};
 	};
 
 	aliases {
 		sw0 = &button0;
-		sw1 = &button1;
+		led3 = &plug_led_red;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		plug_led_red: plug_led_red {
+			gpios = <&gpio0 17 GPIO_ACTIVE_LOW>;
+			label = "Plug status LED (red)";
+		};
+	};
+
+	relay_drive: relay_drive {
+		gpios = <&gpio1 11 GPIO_ACTIVE_HIGH>;
+		label = "Relay drive (D6)";
+	};
+
+	bl0937_cf: bl0937_cf {
+		gpios = <&gpio0 28 GPIO_ACTIVE_HIGH>;
+		label = "BL0937 CF (D2)";
+	};
+
+	bl0937_cf1: bl0937_cf1 {
+		gpios = <&gpio0 29 GPIO_ACTIVE_HIGH>;
+		label = "BL0937 CF1 (D3)";
+	};
+
+	bl0937_sel: bl0937_sel {
+		gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;
+		label = "BL0937 SEL (D4)";
 	};
 };
