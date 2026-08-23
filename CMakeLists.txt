@@ -36,6 +36,7 @@ target_sources(app PRIVATE
   src/power_measurement.cpp
   src/relay.cpp
   src/status_led.cpp
+  src/zcl_callbacks.cpp
 )
 
 if(CONFIG_APP_METER_STUB)

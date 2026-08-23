@@ -483,7 +483,7 @@ west build -b xiao_ble/nrf52840/sense -- -DCMAKE_JOB_POOLS="compile=4;link=1"
   calibration constants.
 * Updated `boards/xiao_ble_nrf52840_sense.overlay` — single button, relay, plug red
   LED on P0.17, BL0937 node.
-* New `src/relay.*` ✅, `src/power_measurement.*` ✅, `src/bl0937.*` (Phase 3, not started), `src/zcl_callbacks.cpp` (OnOff->relay bridge, Phase 2, not started).
+* New `src/relay.*` ✅, `src/power_measurement.*` ✅, `src/zcl_callbacks.cpp` ✅ (OnOff->relay bridge, not yet hardware-verified), `src/bl0937.*` (Phase 3, not started).
 * `src/meter_stub.*` — synthetic meter behind a Kconfig option, used for the step-C
   fit check and retained for mains-free testing of the Matter reporting path.
 * Extended `src/status_led.*` — arbitrates plug red LED (relay state, commissioning
@@ -546,7 +546,7 @@ no mains until the firmware is proven on the bench.
 | **B** | **Measure flash + RAM.** `arm-zephyr-eabi-size build/blink/zephyr/zephyr.elf` | ✅ done — 670 KB / 183 KB after Step A |
 | **C** | Phase 4 clusters wired to a **fake meter** — a stub emitting a synthetic ramp instead of BL0937 data | ✅ **done — the gate passed.** `src/meter_stub.cpp` (behind `CONFIG_APP_METER_STUB`) feeds `src/power_measurement.cpp`'s real EPM `Delegate`/`Instance` and EEM's `SetMeasurementAccuracy`/`NotifyCumulativeEnergyMeasured`. Full clusters, TLV encoders, and reporting engine linked and building. |
 | **D** | **Re-measure.** This is the true worst case — all clusters and TLV encoders linked in | ✅ **675,184 B flash (83.7%), 183,444 B RAM (70.0%).** ~113 KB flash / ~77 KB RAM free — fits with margin, no fallback levers needed. |
-| **E** | Phase 2 relay + button + LED indication, on bare XIAO with an LED on the relay pad | short/long press verified |
+| **E** | Phase 2 relay + button + LED indication, on bare XIAO with an LED on the relay pad | ⏳ **code done, not yet verified on hardware.** `src/zcl_callbacks.cpp` bridges the OnOff cluster to `RelaySet()`/`StatusLedSetRelayState()` both ways: `MatterPostAttributeChangeCallback` for controller writes, `emberAfOnOffClusterInitCallback` to restore `StartUpOnOff` at boot. The button handler (`src/app_task.cpp`) toggles the relay and reports it through `AppTask::UpdateClusterState()`. LED precedence (commissioning blink over relay state) was already in `status_led.cpp`. Remaining: press the button on real hardware and confirm relay GPIO, both LEDs, and the reported attribute all agree. |
 | **F** | Phase 0 tracing → fill `plug-pinout.md` → update overlay | pins CONFIRMED |
 | **G** | **Solder into plug, power via USB, no mains.** Full functional test: relay drive, button, LEDs, commissioning | everything but real readings works |
 | **H** | Phase 3 BL0937 driver, validated by injecting a square wave into CF/CF1 | computed values match injected frequency |

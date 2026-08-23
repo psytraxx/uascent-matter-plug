@@ -19,6 +19,8 @@
 #include "board/board.h"
 #include "clusters/identify.h"
 
+#include <app-common/zap-generated/attributes/Accessors.h>
+#include <lib/support/TypeTraits.h>
 #include <setup_payload/OnboardingCodesUtil.h>
 
 #include <zephyr/kernel.h>
@@ -79,18 +81,39 @@ void AppTask::UpdateStatusLed()
 void AppTask::ButtonEventHandler(Nrf::ButtonState state, Nrf::ButtonMask hasChanged)
 {
 	if (APPLICATION_BUTTON_MASK & hasChanged & ~state) {
-		/* Released. TODO(phase 2): toggle the OnOff attribute on
-		 * kPlugEndpointId here, so the relay change is reported to
-		 * Matter rather than driving RelaySet() behind the cluster's
-		 * back. A long press never reaches this point -- Nrf::Board's
-		 * FunctionHandler consumes it for factory reset first. */
+		/* Released. Toggle the relay directly (this runs on the app
+		 * task, not the Matter thread) and report the new state
+		 * through the cluster so subscribers see it -- UpdateClusterState()
+		 * marshals the attribute write onto the Matter thread. A long
+		 * press never reaches this point -- Nrf::Board's FunctionHandler
+		 * consumes it for factory reset first. */
 		LOG_INF("Plug button released (short press)");
+		RelaySet(!RelayIsOn());
+		StatusLedSetRelayState(RelayIsOn());
+		Instance().UpdateClusterState();
 #ifdef CONFIG_CHIP_ICD_UAT_SUPPORT
 	} else if ((UAT_BUTTON_MASK & state & hasChanged)) {
 		LOG_INF("ICD UserActiveMode has been triggered.");
 		Server::GetInstance().GetICDManager().OnNetworkActivity();
 #endif
 	}
+}
+
+/* Reports the relay's actuator state through the OnOff cluster. Called after
+ * a button press changes the relay directly; MatterPostAttributeChangeCallback
+ * (src/zcl_callbacks.cpp) is the reverse direction, for controller-initiated
+ * writes. Attribute writes must run on the Matter thread, which is why this
+ * marshals through SystemLayer() rather than writing from the button's own
+ * task context. */
+void AppTask::UpdateClusterState()
+{
+	SystemLayer().ScheduleLambda([] {
+		const Protocols::InteractionModel::Status status =
+			Clusters::OnOff::Attributes::OnOff::Set(kPlugEndpointId, RelayIsOn());
+		if (status != Protocols::InteractionModel::Status::Success) {
+			LOG_ERR("Updating OnOff cluster failed: %x", to_underlying(status));
+		}
+	});
 }
 
 CHIP_ERROR AppTask::Init()
@@ -100,8 +123,7 @@ CHIP_ERROR AppTask::Init()
 		/* Endpoint config is only valid once the data model has loaded,
 		 * which is why this waits for the post-server-init hook rather
 		 * than running alongside RelayInit()/StatusLedInit() below.
-		 * TODO(phase 2): OnOff -> RelaySet() bridging still needs a
-		 * MatterPostAttributeChangeCallback; see docs/smart-plug-plan.md. */
+		 * OnOff -> RelaySet() bridging is src/zcl_callbacks.cpp. */
 		return PowerMeasurementInit(kPlugEndpointId);
 	} }));
 
