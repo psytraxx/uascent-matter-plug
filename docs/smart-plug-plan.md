@@ -367,20 +367,37 @@ endurance.
 
 ---
 
-## Phase 4 — Matter measurement clusters
+## Phase 4 — Matter measurement clusters ✅ done (Step C)
 
-**New `src/power_measurement.cpp` / `.h`.**
+**`src/power_measurement.cpp` / `.h`** exist and build. What actually shipped, vs.
+what was planned:
 
-* Implement `chip::app::Clusters::ElectricalPowerMeasurement::Delegate` (see
-  `modules/lib/matter/src/app/clusters/electrical-power-measurement-server/electrical-power-measurement-server.h`).
-  It is a large pure-virtual interface — most methods return
-  `CHIP_ERROR_NOT_IMPLEMENTED` or an empty `Nullable`. Implement meaningfully:
-  `GetActivePower`, `GetRMSVoltage`, `GetRMSCurrent`, `GetPowerMode` (AC),
-  `GetNumberOfMeasurementTypes`, and the accuracy-list methods.
-* Construct an `ElectricalPowerMeasurement::Instance` with the
-  `kOptionalAttributeRMSVoltage | kOptionalAttributeRMSCurrent` optional-attribute
-  bits set, and call `Init()` from the `mPostServerInitClbk` in `AppTask::Init()` —
-  the same hook that currently calls `LightSwitch::Init`.
+* **EPM and EEM turned out to have different shapes**, not documented anywhere
+  obvious ahead of time — worth knowing before touching either again:
+  * `ElectricalPowerMeasurement` really is `Delegate` + `Instance`, as planned.
+    `PlugPowerDelegate` in `power_measurement.cpp` implements it (harmonic/range
+    iterators all return `CHIP_ERROR_PROVIDER_LIST_EXHAUSTED` immediately — this
+    plug measures neither).
+  * `ElectricalEnergyMeasurement` in **this NCS version** (v3.4.0) has **no
+    delegate at all**. It's a singleton the cluster server owns internally
+    (`gMeasurements[]`, indexed by endpoint via
+    `emberAfGetClusterServerEndpointIndex()`), self-registered through
+    `endpoint_config.h`'s cluster table. The app just calls free functions:
+    `SetMeasurementAccuracy()` once, then `NotifyCumulativeEnergyMeasured()` per
+    reading. (An `ElectricalEnergyMeasurementInstance` class *does* exist, but only
+    as an app-local pattern in the `dishwasher-app` example — copying that pattern
+    here would not have linked against what this SDK version actually vendors.)
+* Header locations don't match the ZCL XML's directory layout: the working
+  `#include` is `<app/clusters/electrical-power-measurement-server/...>`
+  (`.../src` is already on the include path), not `<clusters/...>`.
+* `Structs::MeasurementAccuracyStruct`/`MeasurementAccuracyRangeStruct` are
+  **shared** across clusters (`zzz_generated/app-common/clusters/shared/Structs.h`),
+  not per-cluster — a `using namespace chip::app::Clusters::ElectricalPowerMeasurement`
+  plus a locally-named `Delegate` subclass collides with the base class of the same
+  name; name it something else (`PlugPowerDelegate`, not `Delegate`).
+* Confirmed `PowerModeEnum::kAc = 0x02` and `Feature::kAlternatingCurrent = 0x2`;
+  RMSVoltage/RMSCurrent are gated behind the `ALTC` feature in the XML, so the AC
+  feature bit has to be set for those two optional attributes to mean anything.
 * **Units matter.** EPM attributes are `int64_t` in **mW / mV / mA**. Getting the
   scaling wrong is the most likely source of nonsense readings in a controller.
 
@@ -406,9 +423,13 @@ MaxMeasuredValue, AccuracyRanges[] (min 1 entry) }.
   `ElectricalEnergyMeasurement::NotifyCumulativeEnergyMeasured(...)` with an
   `EnergyMeasurementStruct` — energy is in **mWh**. Also
   `SetMeasurementAccuracy(...)` once at init.
-* **Reporting cadence.** Do not report every sample. Apply a deadband (report on a
-  meaningful delta, plus a periodic heartbeat) — a Thread network and a sleepy
-  controller should not see 1 Hz attribute writes.
+* **Reporting cadence — not yet applied.** The stub calls `PowerMeasurementUpdate()`
+  unconditionally every 2 s (`kMeterPollIntervalMs` in `app_task.cpp`), and EPM's
+  attributes go through Matter's own reporting-engine deadbanding, but
+  `NotifyCumulativeEnergyMeasured()` writes on every call regardless of delta. Fine
+  for a stub on a bench-powered board; the real driver (Phase 3) should apply a
+  deadband before calling it, so a Thread network and a sleepy controller don't see
+  a write every poll.
 
 ---
 
@@ -462,7 +483,7 @@ west build -b xiao_ble/nrf52840/sense -- -DCMAKE_JOB_POOLS="compile=4;link=1"
   calibration constants.
 * Updated `boards/xiao_ble_nrf52840_sense.overlay` — single button, relay, plug red
   LED on P0.17, BL0937 node.
-* New `src/relay.*`, `src/bl0937.*`, `src/power_measurement.*`, `src/zcl_callbacks.cpp`.
+* New `src/relay.*` ✅, `src/power_measurement.*` ✅, `src/bl0937.*` (Phase 3, not started), `src/zcl_callbacks.cpp` (OnOff->relay bridge, Phase 2, not started).
 * `src/meter_stub.*` — synthetic meter behind a Kconfig option, used for the step-C
   fit check and retained for mains-free testing of the Matter reporting path.
 * Extended `src/status_led.*` — arbitrates plug red LED (relay state, commissioning
@@ -522,9 +543,9 @@ no mains until the firmware is proven on the bench.
 | Step | Work | Gate |
 |---|---|---|
 | **A** | Phase 1 data model swap (ZAP → plug server), remove light-switch/binding/shell | builds clean |
-| **B** | **Measure flash + RAM.** `arm-zephyr-eabi-size build/blink/zephyr/zephyr.elf` | headroom still positive |
-| **C** | Phase 4 clusters wired to a **fake meter** — a stub emitting a synthetic sine/ramp instead of BL0937 data | **the real gate:** full data model on the device, controller reads plausible W/V/A |
-| **D** | **Re-measure.** This is the true worst case — all clusters and TLV encoders linked in | fits with margin |
+| **B** | **Measure flash + RAM.** `arm-zephyr-eabi-size build/blink/zephyr/zephyr.elf` | ✅ done — 670 KB / 183 KB after Step A |
+| **C** | Phase 4 clusters wired to a **fake meter** — a stub emitting a synthetic ramp instead of BL0937 data | ✅ **done — the gate passed.** `src/meter_stub.cpp` (behind `CONFIG_APP_METER_STUB`) feeds `src/power_measurement.cpp`'s real EPM `Delegate`/`Instance` and EEM's `SetMeasurementAccuracy`/`NotifyCumulativeEnergyMeasured`. Full clusters, TLV encoders, and reporting engine linked and building. |
+| **D** | **Re-measure.** This is the true worst case — all clusters and TLV encoders linked in | ✅ **675,184 B flash (83.7%), 183,444 B RAM (70.0%).** ~113 KB flash / ~77 KB RAM free — fits with margin, no fallback levers needed. |
 | **E** | Phase 2 relay + button + LED indication, on bare XIAO with an LED on the relay pad | short/long press verified |
 | **F** | Phase 0 tracing → fill `plug-pinout.md` → update overlay | pins CONFIRMED |
 | **G** | **Solder into plug, power via USB, no mains.** Full functional test: relay drive, button, LEDs, commissioning | everything but real readings works |

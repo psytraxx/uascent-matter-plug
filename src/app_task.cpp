@@ -6,8 +6,13 @@
 
 #include "app_task.h"
 
+#include "power_measurement.h"
 #include "relay.h"
 #include "status_led.h"
+
+#if CONFIG_APP_METER_STUB
+#include "meter_stub.h"
+#endif
 
 #include "app/matter_init.h"
 #include "app/task_executor.h"
@@ -16,6 +21,7 @@
 
 #include <setup_payload/OnboardingCodesUtil.h>
 
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_DECLARE(app, CONFIG_CHIP_APP_LOG_LEVEL);
@@ -27,6 +33,7 @@ using namespace ::chip::DeviceLayer;
 namespace
 {
 constexpr EndpointId kPlugEndpointId = 1;
+constexpr uint32_t kMeterPollIntervalMs = 2000;
 
 Nrf::Matter::IdentifyCluster sIdentifyCluster(kPlugEndpointId);
 
@@ -37,6 +44,15 @@ Nrf::Matter::IdentifyCluster sIdentifyCluster(kPlugEndpointId);
 
 #ifdef CONFIG_CHIP_ICD_UAT_SUPPORT
 #define UAT_BUTTON_MASK DK_BTN3_MSK
+#endif
+
+#if CONFIG_APP_METER_STUB
+k_timer sMeterPollTimer;
+
+void MeterPollTimerCallback(k_timer *)
+{
+	Nrf::PostTask([] { MeterPoll(); });
+}
 #endif
 } /* namespace */
 
@@ -81,9 +97,12 @@ CHIP_ERROR AppTask::Init()
 {
 	/* Initialize Matter stack */
 	ReturnErrorOnFailure(Nrf::Matter::PrepareServer(Nrf::Matter::InitData{ .mPostServerInitClbk = [] {
-		// TODO(phase 2/4): relay and ElectricalPowerMeasurement/ElectricalEnergyMeasurement
-		// init needs to go here, replacing the light-switch client's LightSwitch::Init().
-		return CHIP_NO_ERROR;
+		/* Endpoint config is only valid once the data model has loaded,
+		 * which is why this waits for the post-server-init hook rather
+		 * than running alongside RelayInit()/StatusLedInit() below.
+		 * TODO(phase 2): OnOff -> RelaySet() bridging still needs a
+		 * MatterPostAttributeChangeCallback; see docs/smart-plug-plan.md. */
+		return PowerMeasurementInit(kPlugEndpointId);
 	} }));
 
 	const int ledErr = StatusLedInit();
@@ -111,7 +130,16 @@ CHIP_ERROR AppTask::Init()
 
 	ReturnErrorOnFailure(sIdentifyCluster.Init());
 
-	return Nrf::Matter::StartServer();
+	const CHIP_ERROR startErr = Nrf::Matter::StartServer();
+	ReturnErrorOnFailure(startErr);
+
+#if CONFIG_APP_METER_STUB
+	MeterInit();
+	k_timer_init(&sMeterPollTimer, MeterPollTimerCallback, nullptr);
+	k_timer_start(&sMeterPollTimer, K_MSEC(kMeterPollIntervalMs), K_MSEC(kMeterPollIntervalMs));
+#endif
+
+	return CHIP_NO_ERROR;
 }
 
 CHIP_ERROR AppTask::StartApp()

@@ -33,9 +33,14 @@ target_compile_options(app PRIVATE -Wno-deprecated-declarations)
 target_sources(app PRIVATE
   src/app_task.cpp
   src/main.cpp
+  src/power_measurement.cpp
   src/relay.cpp
   src/status_led.cpp
 )
+
+if(CONFIG_APP_METER_STUB)
+  target_sources(app PRIVATE src/meter_stub.cpp)
+endif()
 
 ncs_configure_data_model()
 # NORDIC SDK APP END

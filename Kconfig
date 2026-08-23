@@ -13,6 +13,14 @@ config STATE_LEDS
 	  the device into a network or the factory reset initiation. Note that setting this option to
 	  'n' does not disable the LED indicating the state of the simulated bolt.
 
+config APP_METER_STUB
+	bool "Feed the power/energy clusters synthetic readings"
+	default y
+	help
+	  Builds src/meter_stub.cpp instead of the BL0937 driver (not written
+	  yet). Used for the flash/RAM fit check and for testing the Matter
+	  reporting path without mains -- see docs/smart-plug-plan.md.
+
 # Sample configuration used for Thread networking
 if OPENTHREAD
 
