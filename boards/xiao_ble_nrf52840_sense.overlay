@@ -43,6 +43,15 @@
  * do for led0-led3.
  */
 
+/* The Sense variant's on-board LSM6DSL IMU is wired on I2C0, which this
+ * design doesn't use (see the D4/D5 note above) and nothing in the app
+ * touches the sensor subsystem. Disabling it drops "LSM6DSL: Failed to
+ * initialize chip" from every boot log and pulls CONFIG_SENSOR/LSM6DSL back
+ * out of the build. */
+&lsm6ds3tr_c {
+	status = "disabled";
+};
+
 / {
 	buttons {
 		compatible = "gpio-keys";
