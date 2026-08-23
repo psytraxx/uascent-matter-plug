@@ -483,9 +483,11 @@ west build -b xiao_ble/nrf52840/sense -- -DCMAKE_JOB_POOLS="compile=4;link=1"
   calibration constants.
 * Updated `boards/xiao_ble_nrf52840_sense.overlay` — single button, relay, plug red
   LED on P0.17, BL0937 node.
-* New `src/relay.*` ✅, `src/power_measurement.*` ✅, `src/zcl_callbacks.cpp` ✅ (OnOff->relay bridge, not yet hardware-verified), `src/bl0937.*` (Phase 3, not started).
-* `src/meter_stub.*` — synthetic meter behind a Kconfig option, used for the step-C
-  fit check and retained for mains-free testing of the Matter reporting path.
+* New `src/relay.*` ✅, `src/power_measurement.*` ✅, `src/zcl_callbacks.cpp` ✅ (OnOff->relay bridge, not yet hardware-verified), `src/bl0937.*` ✅ (Phase 3, not yet hardware-verified).
+* `src/meter_stub.*` served the step-C fit check and mains-free reporting-path
+  testing, then was removed once `src/bl0937.*` replaced it -- both present the
+  same `MeterInit()`/`MeterPoll()` shape, so nothing else changed when one
+  swapped for the other.
 * Extended `src/status_led.*` — arbitrates plug red LED (relay state, commissioning
   blink takes precedence) and mirrors it in colour on the on-board RGB.
 * Rewritten `src/app_task.cpp`; deleted `src/light_switch.*`, `src/shell_commands.*`.

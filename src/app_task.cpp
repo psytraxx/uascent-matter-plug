@@ -6,13 +6,10 @@
 
 #include "app_task.h"
 
+#include "bl0937.h"
 #include "power_measurement.h"
 #include "relay.h"
 #include "status_led.h"
-
-#if CONFIG_APP_METER_STUB
-#include "meter_stub.h"
-#endif
 
 #include "app/matter_init.h"
 #include "app/task_executor.h"
@@ -48,14 +45,12 @@ Nrf::Matter::IdentifyCluster sIdentifyCluster(kPlugEndpointId);
 #define UAT_BUTTON_MASK DK_BTN3_MSK
 #endif
 
-#if CONFIG_APP_METER_STUB
 k_timer sMeterPollTimer;
 
 void MeterPollTimerCallback(k_timer *)
 {
 	Nrf::PostTask([] { MeterPoll(); });
 }
-#endif
 } /* namespace */
 
 /* Feeds the network axis of the LED indication; see src/status_led.h for the
@@ -155,11 +150,9 @@ CHIP_ERROR AppTask::Init()
 	const CHIP_ERROR startErr = Nrf::Matter::StartServer();
 	ReturnErrorOnFailure(startErr);
 
-#if CONFIG_APP_METER_STUB
 	MeterInit();
 	k_timer_init(&sMeterPollTimer, MeterPollTimerCallback, nullptr);
 	k_timer_start(&sMeterPollTimer, K_MSEC(kMeterPollIntervalMs), K_MSEC(kMeterPollIntervalMs));
-#endif
 
 	return CHIP_NO_ERROR;
 }
