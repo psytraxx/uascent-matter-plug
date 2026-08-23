@@ -43,6 +43,19 @@ Console is USB CDC-ACM, supplied by the board devicetree via
 uses the newer `usb_device_next` stack and enabling both yields duplicate
 `cdc_acm` symbols at link time.
 
+Two console settings matter for Matter, since there is only one CDC-ACM port:
+
+* `CONFIG_CHIP_LIB_SHELL=n`. The light_switch sample turns the Matter shell
+  on, which assumes a UART separate from the log backend. Here the shell
+  prompt races the log output and both come out garbled.
+* `CONFIG_LOG_MODE_DEFERRED=y`. The Matter Kconfig defaults pick
+  `LOG_MODE_MINIMAL`, which *drops* messages rather than buffering them, so
+  the onboarding-code block is truncated mid-line during the boot burst.
+
+The 1200-baud touch does not put this board into the bootloader (that is an
+`usb_device` feature and this board runs `usb_device_next`), so entering UF2
+mode means physically double-tapping RESET.
+
 ## Matter
 
 The app is a Matter over Thread light switch, ported from NCS

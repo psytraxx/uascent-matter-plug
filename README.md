@@ -23,7 +23,34 @@ nRF Connect SDK **v3.4.0** at `/home/eric/ncs`, with toolchain `fbf7391cab`.
 The SDK is not on `PATH`; the commands below assume the environment described
 in [CLAUDE.md](CLAUDE.md), or use the VS Code nRF Connect extension.
 
+## Scripts
+
+`scripts/` wraps the three things you actually do. They set the SDK
+environment themselves, so they work from a plain shell:
+
+| Script | Purpose |
+| --- | --- |
+| `scripts/build.sh` | Build (`-p` for a pristine rebuild) |
+| `scripts/flash.sh` | Flash over UF2 (`-b` to build first) |
+| `scripts/monitor.sh` | Watch the USB console |
+
+They assume the SDK layout in [CLAUDE.md](CLAUDE.md); override with
+`NCS_ROOT`, `NCS_VERSION`, or `NCS_TOOLCHAIN` if it lives elsewhere.
+
+Typical loop:
+
+```sh
+scripts/flash.sh -b     # build, then flash (double-tap RESET when asked)
+scripts/monitor.sh      # watch it boot
+```
+
 ## Build
+
+```sh
+scripts/build.sh
+```
+
+or, with the environment from [CLAUDE.md](CLAUDE.md) already set up:
 
 ```sh
 west build -b xiao_ble/nrf52840/sense
@@ -32,13 +59,20 @@ west build -b xiao_ble/nrf52840/sense
 The board target must include the `sense` variant. Plain `xiao_ble/nrf52840`
 selects the non-Sense board, which has a different pin map.
 
+Compiles go through `ccache` automatically when it is on `PATH`.
+
 Current footprint: ~695 KB flash (86% of the 788 KB app partition), ~166 KB
 RAM. The flash headroom is thin -- `CONFIG_LTO=y` is required to fit.
 
 ## Flash
 
+```sh
+scripts/flash.sh
+```
+
 The XIAO ships the **Adafruit UF2 bootloader** and has no on-board debug
-probe, so flashing is drag-and-drop rather than `west flash`:
+probe, so flashing is drag-and-drop rather than `west flash`. The script
+automates the steps below, waiting for the drive to appear:
 
 1. Double-tap the RESET button. The board re-enumerates as USB `2886:0045` (bootloader)
    and mounts as a mass-storage drive (`XIAO-SENSE`).
@@ -58,10 +92,27 @@ The console is USB CDC-ACM, provided by the board's devicetree
 (`cdc_acm_serial.dtsi`). After the firmware boots:
 
 ```sh
+scripts/monitor.sh
+```
+
+or any serial terminal; the baud rate is irrelevant for USB CDC:
+
+```sh
 minicom -D /dev/serial/by-id/usb-Zephyr_Project_CDC_ACM_serial_backend_*-if00
 ```
 
-Any serial terminal works; the baud rate is irrelevant for USB CDC.
+The console only exists while the firmware is running. In the UF2 bootloader
+the board enumerates as `2886:0045` with no serial port.
+
+Two console settings are load-bearing on this board, both driven by there
+being a single CDC-ACM port shared by everything:
+
+* The Matter shell (`CONFIG_CHIP_LIB_SHELL`) is **off**. The light_switch
+  sample enables it, but it assumes a UART separate from the log backend; on
+  one shared port its prompt races the log output and corrupts both.
+* `CONFIG_LOG_MODE_DEFERRED=y`. The default `LOG_MODE_MINIMAL` drops messages
+  under load rather than buffering them, which truncated the onboarding-code
+  block mid-line during the boot burst.
 
 ## Matter
 
