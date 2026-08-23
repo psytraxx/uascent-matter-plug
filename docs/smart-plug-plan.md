@@ -117,13 +117,9 @@ re-truncate the onboarding block. Prefer levers 1–3.
 
 Fill in the worksheet (`BL0937` pins 6/7/8 = CF1/CF/SEL) with a multimeter, board
 unplugged and caps discharged. Beyond CF/CF1/SEL, also trace **relay driver**,
-**button**, and **both LED** nets, and confirm **LED polarity** (likely active-low).
-
-**Correction (2026-08-23): the board has two indicator LEDs, not one.**
-`docs/PXL_20260821_165652054.MACRO_FOCUS.jpg` shows two distinct SMD LED
-footprints flanking the tactile button — earlier passes of this plan assumed
-a single red LED. Tracing must identify both independently (two GPIOs, not
-one) and the indication design below is revised accordingly. See
+**button**, and **both LED** nets independently (the board has two indicator
+LEDs, not one — see **Indication design** in Phase 2), and confirm each LED's
+polarity (likely active-low, but may not match between the two). See
 `docs/original-pcb-trace.md` for the board-level notes and probing plan.
 
 Shortcut worth trying first: if the plug is a known Uascent/WK38-V20 variant, the
@@ -293,12 +289,11 @@ already available since the Matter stack uses it.
 
 ### Indication design (three indicators: two plug LEDs + on-board RGB)
 
-**Revised 2026-08-23** — the plug board carries **two** LEDs (confirmed from
-`docs/PXL_20260821_165652054.MACRO_FOCUS.jpg`; see `docs/original-pcb-trace.md`),
-not the single red LED earlier passes of this plan assumed. That's a real
-opportunity: the sealed enclosure hides the XIAO's on-board RGB entirely, so the
-plug's own two LEDs are the *only* feedback the user ever sees. Split the two
-signals cleanly across them instead of collapsing to one:
+The plug board carries **two** LEDs (confirmed from
+`docs/PXL_20260821_165652054.MACRO_FOCUS.jpg`; see `docs/original-pcb-trace.md`).
+The sealed enclosure hides the XIAO's on-board RGB entirely, so the plug's own two
+LEDs are the *only* feedback the user ever sees — split the two signals cleanly
+across them:
 
 | Condition | Plug LED 1 (relay) | Plug LED 2 (network) | On-board RGB (debug mirror) |
 |---|---|---|---|
@@ -308,18 +303,16 @@ signals cleanly across them instead of collapsing to one:
 | Provisioned / connected, no commissioning | mirrors relay | off (or dim solid) | off |
 | Fatal / unrecoverable | fast blink | fast blink | red solid |
 
-LED 1 tracks **relay state** only — no precedence conflict, since it never needs to
-represent network state. LED 2 tracks **network/commissioning state** only
-(`Nrf::DeviceState`) and is silent once provisioned so it doesn't compete for
-attention with LED 1 during normal use. This removes the precedence problem the
-single-LED design had (commissioning blink outranking relay state on the same LED)
-because the two facts now live on two different LEDs instead of one.
+LED 1 tracks **relay state** only. LED 2 tracks **network/commissioning state**
+only (`Nrf::DeviceState`) and is silent once provisioned. Putting the two facts on
+separate LEDs avoids the precedence conflict a single shared LED would need
+(commissioning blink outranking relay state).
 
-This is a real change from the current code. `src/status_led.cpp` today is driven
+This is a real change from the current code: `src/status_led.cpp` today is driven
 *only* by `AppTask::UpdateStatusLed`, which reads `Nrf::GetBoard().GetDeviceState()`
-— a **network** state. That maps directly onto the new LED 2. The relay-state input
-for LED 1 comes from a different source entirely (the OnOff attribute) and did not
-exist in the code before Phase 2's `zcl_callbacks.cpp`.
+— a network state, mapping directly onto the new LED 2. The relay-state input for
+LED 1 comes from a different source (the OnOff attribute) and did not exist in the
+code before Phase 2's `zcl_callbacks.cpp`.
 
 **Restructure into one indication module** — extend `src/status_led.*` (rather than
 adding a parallel module) so a single owner arbitrates all three LEDs and there is no
@@ -516,9 +509,10 @@ west build -b xiao_ble/nrf52840/sense -- -DCMAKE_JOB_POOLS="compile=4;link=1"
   testing, then was removed once `src/bl0937.*` replaced it -- both present the
   same `MeterInit()`/`MeterPoll()` shape, so nothing else changed when one
   swapped for the other.
-* Extended `src/status_led.*` — arbitrates two plug LEDs (LED 1: relay state, LED 2:
-  network/commissioning state — currently still single-LED code, pending the
-  two-LED split) and mirrors both in colour on the on-board RGB.
+* Extended `src/status_led.*` ✅ — drives two plug LEDs independently (LED 1: relay
+  state, LED 2: network/commissioning state) and mirrors both in colour on the
+  on-board RGB. Not yet hardware-verified (real LED pins still provisional pending
+  Phase 0 tracing).
 * Rewritten `src/app_task.cpp`; deleted `src/light_switch.*`, `src/shell_commands.*`.
 * New `src/default_zap/smart_plug.zap` + regenerated `zap-generated/`.
 * Updated `prj.conf` (product name/ID, BT name, ZAP path) and `CMakeLists.txt`.
@@ -577,7 +571,7 @@ no mains until the firmware is proven on the bench.
 | **B** | **Measure flash + RAM.** `arm-zephyr-eabi-size build/blink/zephyr/zephyr.elf` | ✅ done — 670 KB / 183 KB after Step A |
 | **C** | Phase 4 clusters wired to a **fake meter** — a stub emitting a synthetic ramp instead of BL0937 data | ✅ **done — the gate passed.** `src/meter_stub.cpp` (behind `CONFIG_APP_METER_STUB`) feeds `src/power_measurement.cpp`'s real EPM `Delegate`/`Instance` and EEM's `SetMeasurementAccuracy`/`NotifyCumulativeEnergyMeasured`. Full clusters, TLV encoders, and reporting engine linked and building. |
 | **D** | **Re-measure.** This is the true worst case — all clusters and TLV encoders linked in | ✅ **675,184 B flash (83.7%), 183,444 B RAM (70.0%).** ~113 KB flash / ~77 KB RAM free — fits with margin, no fallback levers needed. |
-| **E** | Phase 2 relay + button + LED indication, on bare XIAO with an LED on the relay pad | ⏳ **code done for the single-LED design, needs updating for the two-LED split (see Indication design, revised 2026-08-23) before hardware verification.** `src/zcl_callbacks.cpp` bridges the OnOff cluster to `RelaySet()`/`StatusLedSetRelayState()` both ways: `MatterPostAttributeChangeCallback` for controller writes, `emberAfOnOffClusterInitCallback` to restore `StartUpOnOff` at boot. The button handler (`src/app_task.cpp`) toggles the relay and reports it through `AppTask::UpdateClusterState()`. `status_led.cpp` still arbitrates one plug LED with commissioning-blink precedence over relay state — needs a second `gpio_dt_spec` and an independent LED-2 path once retraced. Remaining: press the button on real hardware and confirm relay GPIO, both plug LEDs, and the reported attribute all agree. |
+| **E** | Phase 2 relay + button + LED indication, on bare XIAO with an LED on the relay pad | ⏳ **code done for the two-LED split, not yet verified on hardware.** `src/zcl_callbacks.cpp` bridges the OnOff cluster to `RelaySet()`/`StatusLedSetRelayState()` both ways: `MatterPostAttributeChangeCallback` for controller writes, `emberAfOnOffClusterInitCallback` to restore `StartUpOnOff` at boot. The button handler (`src/app_task.cpp`) toggles the relay and reports it through `AppTask::UpdateClusterState()`. `status_led.cpp` now drives plug LED 1 (relay, P0.17) and plug LED 2 (network, D1) independently — no precedence logic needed, since each LED renders only its own axis. Builds clean: 666,700 B flash (82.6%), 183,124 B RAM (69.9%). Remaining: press the button on real hardware and confirm relay GPIO, both plug LEDs, and the reported attribute all agree. |
 | **F** | Phase 0 tracing → fill `plug-pinout.md` → update overlay | pins CONFIRMED |
 | **G** | **Solder into plug, power via USB, no mains.** Full functional test: relay drive, button, LEDs, commissioning | everything but real readings works |
 | **H** | Phase 3 BL0937 driver, validated by injecting a square wave into CF/CF1 | computed values match injected frequency |

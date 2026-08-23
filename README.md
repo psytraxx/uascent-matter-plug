@@ -29,7 +29,8 @@ except real power readings works that way. See
 | --- | --- | --- |
 | Button | D0 | Short press = toggle relay, long press (3 s) = factory reset |
 | Relay | D6 | Switches the load |
-| Plug LED | P0.17 | The plug's own red LED |
+| Plug LED 1 | P0.17 | The plug's own LED, tracks relay state |
+| Plug LED 2 | D1 | The plug's second LED, tracks network/commissioning state |
 | BL0937 CF | D2 | Power pulses from the meter chip |
 | BL0937 CF1 | D3 | Voltage/current pulses |
 | BL0937 SEL | D4 | Selects which of the two CF1 reports |
@@ -37,22 +38,21 @@ except real power readings works that way. See
 **These pin choices are provisional.** The plug's board has not been traced
 yet, so they are guesses that are electrically sensible. They live in
 `boards/xiao_ble_nrf52840_sense.overlay` — correcting them is a one-file
-change, no code edits.
-
-P0.17 normally drives the module's battery-charge LED. A mains plug has no
-battery, so it is free.
+change, no code edits. Full rationale in
+[docs/smart-plug-plan.md](docs/smart-plug-plan.md).
 
 ### LEDs
 
-Two LEDs show two different things. Commissioning always wins over relay
-state.
+The plug's board has two LEDs, each tracking one thing, plus the XIAO's own
+on-board RGB as a debug mirror. Commissioning state never competes with
+relay state because they're on separate LEDs.
 
-| Situation | Plug's red LED | Board's RGB LED |
-| --- | --- | --- |
-| Pairing mode | blinking | blue, blinking |
-| Paired, load on | on | green |
-| Paired, load off | off | off |
-| Fault | fast blink | red, fast blink |
+| Situation | Plug LED 1 (relay) | Plug LED 2 (network) | Board's RGB LED |
+| --- | --- | --- | --- |
+| Pairing mode | mirrors relay | blinking | blue, blinking |
+| Paired, load on | on | off | green |
+| Paired, load off | off | off | off |
+| Fault | fast blink | fast blink | red, fast blink |
 
 ## Prerequisites
 

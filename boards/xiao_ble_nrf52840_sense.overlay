@@ -11,22 +11,30 @@
  *   D0 / P0.02  - plug tactile switch (short = toggle relay, long = factory
  *                 reset; handled by the Matter common board layer's function
  *                 button, see samples/matter/common/src/board/board.cpp)
+ *   D1 / P0.03  - plug LED 2 (network/commissioning state indicator)
  *   D2 / P0.28  - BL0937 CF  (active-power pulse), ADC-capable pad kept in
  *                 reserve in case pulse counting needs an analog fallback
  *   D3 / P0.29  - BL0937 CF1 (V/I pulse, muxed by SEL), same ADC reasoning
  *   D4 / P0.04  - BL0937 SEL (V/I select output)
  *   D6 / P1.11  - relay drive (digital-only pad; the relay needs no ADC)
- *   P0.17       - plug's own red LED (relay state indicator). This pin is
- *                 wired on the XIAO module as CHARGE_LED but is NOT declared
- *                 in the board devicetree and NOT on the edge connector --
- *                 it drives the module's own (unpopulated-in-this-design)
+ *   P0.17       - plug LED 1 (relay state indicator). This pin is wired on
+ *                 the XIAO module as CHARGE_LED but is NOT declared in the
+ *                 board devicetree and NOT on the edge connector -- it
+ *                 drives the module's own (unpopulated-in-this-design)
  *                 battery charge LED and is otherwise idle on a mains plug
  *                 with no battery. Reusing it here frees a connector pad.
  *
- * The plug's status LED polarity is assumed active-low, matching the
- * on-board RGB LED (xiao_ble_common.dtsi); confirm during tracing.
+ * The plug has two LEDs, not one -- see docs/original-pcb-trace.md. LED 1
+ * (P0.17) mirrors relay state; LED 2 (D1) mirrors network/commissioning
+ * state. Splitting the two facts across separate LEDs avoids a precedence
+ * conflict on a single shared LED. See "Indication design" in
+ * docs/smart-plug-plan.md.
  *
- * D1/D5/D7-D10 are deliberately left unused as spares (D4/D5 are the I2C
+ * Both LEDs' polarity is assumed active-low, matching the on-board RGB LED
+ * (xiao_ble_common.dtsi); confirm independently during tracing -- they may
+ * not share polarity.
+ *
+ * D5/D7-D10 are deliberately left unused as spares (D4/D5 are the I2C
  * pair, D6/D7 the UART pair -- avoided for a possible future sensor).
  *
  * All GPIO producer/consumer nodes below reuse Zephyr's "gpio-leds" /
@@ -40,7 +48,7 @@
  * which is all any of these signals needs; no LED or button driver actually
  * attaches to bl0937_sel/cf/cf1 or relay_drive, they're read/driven with
  * plain GPIO calls the same way src/status_led.cpp and src/relay.cpp already
- * do for led0-led3.
+ * do for led0-led4.
  */
 
 /* The Sense variant's on-board LSM6DSL IMU is wired on I2C0, which this
@@ -78,15 +86,21 @@
 
 	aliases {
 		sw0 = &button0;
-		led3 = &plug_led_red;
+		led3 = &plug_led_relay;
+		led4 = &plug_led_network;
 	};
 
 	leds {
 		compatible = "gpio-leds";
 
-		plug_led_red: plug_led_red {
+		plug_led_relay: plug_led_relay {
 			gpios = <&gpio0 17 GPIO_ACTIVE_LOW>;
-			label = "Plug status LED (red)";
+			label = "Plug LED 1 (relay state)";
+		};
+
+		plug_led_network: plug_led_network {
+			gpios = <&gpio0 3 GPIO_ACTIVE_LOW>;
+			label = "Plug LED 2 (network state, D1)";
 		};
 
 		relay_drive: relay_drive {

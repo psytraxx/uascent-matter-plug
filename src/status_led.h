@@ -1,51 +1,51 @@
 /*
  * LED indication for the smart plug.
  *
- * There are two independent LEDs, driven from two different signal sources:
+ * There are three LEDs, each driven from its own signal source, no
+ * precedence needed between them:
  *
- *   - the plug's own red LED (P0.17) mirrors RELAY state -- solid when the
- *     load is switched on, off when it is off. That is what the enclosure
- *     shows the user day to day.
- *   - the on-board RGB LED mirrors the same information in colour, plus
- *     network/commissioning state, and stays useful for debugging with the
- *     case open.
+ *   - the plug's LED 1 (P0.17) mirrors RELAY state -- solid when the load
+ *     is switched on, off when it is off.
+ *   - the plug's LED 2 (D1) mirrors NETWORK/commissioning state -- blinking
+ *     while the commissioning window is open, off once provisioned.
+ *   - the on-board RGB LED mirrors both simultaneously in colour, and stays
+ *     useful for debugging with the case open (the plug's own two LEDs are
+ *     the only feedback visible once the enclosure is sealed).
  *
- * Commissioning takes priority over relay state on BOTH LEDs: while the
- * commissioning window is open, both blink regardless of the relay, since
- * that is what the user needs to see in that moment. Once commissioning
- * completes (or was never entered), the LEDs revert to mirroring the relay.
+ * Splitting relay state and network state across two separate physical
+ * LEDs means neither has to defer to the other -- unlike a single shared
+ * LED, there is no case where commissioning blink must override relay
+ * state, because they are never rendered on the same LED.
  *
- *   Plug LED (red)          On-board RGB           Condition
- *   ---------------          -----------            ---------
- *   blinking                 blue blinking          commissioning window open
- *   solid on                 green solid            relay on, commissioned
- *   off                      off                     relay off, commissioned
- *   fast blink                red solid               fatal/unrecoverable
+ *   Plug LED 1 (relay)   Plug LED 2 (network)   On-board RGB   Condition
+ *   ------------------   ---------------------  ------------   ---------
+ *   mirrors relay         blinking               blue blinking  commissioning window open
+ *   solid on               off                    green solid    relay on, commissioned
+ *   off                     off                    off             relay off, commissioned
+ *   fast blink              fast blink             red solid        fatal/unrecoverable
  *
  * Call UpdateNetworkState() from the Matter device-state callback and
- * UpdateRelayState() from the OnOff attribute-change callback; whichever
- * fires last wins for its own axis, and commissioning precedence is
- * re-evaluated on every call so the two never need to coordinate directly.
+ * UpdateRelayState() from the OnOff attribute-change callback; each drives
+ * its own LED (plus the RGB mirror) independently.
  */
 
 #pragma once
 
 enum class NetworkLedState {
-	Pairing, /* Commissioning window open: blink blue / blink red. */
-	Paired,  /* Provisioned and on a fabric: defer to relay state. */
-	Error,   /* Fatal/unrecoverable: solid red / fast red blink. */
+	Pairing, /* Commissioning window open: LED 2 blinks, RGB blinks blue. */
+	Paired,  /* Provisioned and on a fabric: LED 2 off, RGB reflects relay. */
+	Error,   /* Fatal/unrecoverable: LED 2 fast blinks, RGB fast blinks red. */
 };
 
-/* Initialises all four GPIO LED channels (on-board RGB + plug red).
- * Returns 0 on success, negative errno on failure (in which case no LED can
- * be driven at all). */
+/* Initialises all five GPIO LED channels (on-board RGB + plug LED 1 + plug
+ * LED 2). Returns 0 on success, negative errno on failure (in which case no
+ * LED can be driven at all). */
 int StatusLedInit(void);
 
-/* Reports the Matter network/commissioning state. See precedence rules
- * above -- this can override relay-state indication on both LEDs. */
+/* Reports the Matter network/commissioning state. Drives plug LED 2 and the
+ * RGB's blink axis; independent of relay state. */
 void StatusLedSetNetworkState(NetworkLedState state);
 
-/* Reports the relay's current on/off state. Ignored for indication purposes
- * while a commissioning window is open; remembered and applied as soon as
- * commissioning state clears. */
+/* Reports the relay's current on/off state. Drives plug LED 1 and the RGB's
+ * colour axis; independent of network state. */
 void StatusLedSetRelayState(bool relayOn);

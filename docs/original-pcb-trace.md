@@ -28,8 +28,9 @@ Board is silkscreened **WK38-V20**. Populated front side (from
 - Two small SMD LEDs flanking the button.
 - Relay, bottom-left, 2-pole, marked "...SH-DC05V...TT-1" — switches the
   load. Coil driven from logic side; contacts carry mains.
-- 6-pad castellated header, bottom-center, where the Wi-Fi/BLE daughtercard
-  plugs in.
+- Castellated card-edge header, bottom-center, where the Wi-Fi/BLE
+  daughtercard plugs in. What's visible in this photo is one face of the
+  connector (see UAM023 pinout below for the full 11-pad picture).
 - Current-sense resistor network (several 0402/0603 parts marked with values
   I couldn't resolve at this resolution, e.g. "R00_", "10R", "V10", "10A")
   clustered near the BL0937 — plausibly its CF/CF1 sampling resistors for
@@ -61,13 +62,11 @@ relay coil with loose blue/red/purple leads and mounted next to two more
 | 10  | CEN  | Reset              |
 | 11  | P26  | GPIO26/PWM5        |
 
-Correction: `original_chip_pins.png` is a datasheet page, not a board photo.
-It shows the module's card-edge connector split across two rows — TOP face
-silkscreened `CEN ADC P8 P7 P6` (5 pads) and BOTTOM face `3V3 GND RX1 TX1
-P24 P26` (6 pads) — 11 pads total, not a single row of 6. What I initially
-read as "a 6-pad header" in the macro photos of the host board is one face
-of this same 11-pad castellated edge; the host board's mating footprint
-should be expected to carry all 11 signals, not a reduced subset.
+`original_chip_pins.png` is the datasheet page for this table: it shows the
+module's card-edge connector split across two rows — TOP face silkscreened
+`CEN ADC P8 P7 P6` (5 pads) and BOTTOM face `3V3 GND RX1 TX1 P24 P26`
+(6 pads), 11 pads total. The host board's mating footprint should be
+expected to carry all 11 signals.
 
 Which of the 11 signals the host board's driver circuitry actually *uses*
 (vs. leaves as no-connects) is still **not determined from the photos** —
@@ -87,8 +86,8 @@ across layers or under parts optically.
    can't see a driver transistor clearly in the photos (could be integrated
    into the FT8410A, or a separate small SOT-23 hidding under solder mask
    glare).
-3. Button and the two status LEDs are each on their own GPIO — again, which
-   physical header pin maps to which is unknown.
+3. Button and the two status LEDs (see below) are each on their own GPIO —
+   again, which physical header pin maps to which is unknown.
 4. BL0937 talks to the host over two pins (CF and CF1, its standard
    power/current pulse outputs) plus possibly SEL (voltage/current channel
    select) — whether these route to the 6-pad header directly or through
@@ -142,8 +141,9 @@ in diode/continuity mode, not voltage checks on a live board.
    3.3V, depending on active-high/low design); the other leg should show
    continuity to exactly one header pad — that's your button GPIO.
 
-6. **Find the LED pin(s).** Similarly, trace each LED's non-power leg (via
-   its series resistor) back to a header pad.
+6. **Find both LED pins.** Two LEDs flank the button (see below) — trace
+   each one's non-power leg (via its series resistor) back to a header pad
+   independently; don't assume they land on adjacent pads.
 
 7. **Record results** in a table here (pad number → net name → function),
    and cross-reference against the UAM023 datasheet pinout above to confirm
@@ -154,17 +154,15 @@ in diode/continuity mode, not voltage checks on a live board.
 
 ## Two indicator LEDs, not one
 
-Re-examined `PXL_20260821_165652054.MACRO_FOCUS.jpg`: there are two small
-SMD parts flanking the tactile button, each in its own distinct footprint —
-most likely two separate status LEDs (e.g. power/Wi-Fi state vs. relay/on
-state), not one. Not 100% certain from a photo alone (continuity/forward-
-voltage check would confirm), but worth noting as a firmware opportunity:
-if these land on two of the host header's spare GPIOs, the new firmware
-could drive richer status feedback (commissioning state, relay state, etc.)
-through the plug's own visible LEDs instead of relying solely on the XIAO's
-onboard RGB LED, which isn't visible once sealed in the enclosure. Add LED1
-/ LED2 identification to the probing steps once the button GPIO is found —
-their series resistors are the immediate neighbors on the board.
+The two small SMD parts flanking the tactile button in
+`PXL_20260821_165652054.MACRO_FOCUS.jpg`, each in its own distinct
+footprint, are two separate status LEDs, not one. Not confirmed by
+continuity/forward-voltage check, but the firmware plan
+(`docs/smart-plug-plan.md`) now assigns them independent roles (relay
+state, network/commissioning state) since the sealed enclosure hides the
+XIAO's on-board RGB entirely — the plug's own two LEDs are the only
+feedback the user ever sees. Step 6 of the probing plan above covers
+finding both.
 
 ## Results
 
