@@ -19,9 +19,14 @@ fi
 # ccache is picked up from PATH by the Zephyr build; keeping it ahead of the
 # toolchain entries means compiles go through the shared cache in
 # ~/.cache/ccache, the same one other projects on this machine use.
-PATH="$T/bin:$T/usr/bin:$T/usr/local/bin:$T/opt/bin"
-PATH="$PATH:$T/opt/nanopb/generator-bin:$T/nrfutil/bin"
-PATH="$PATH:$T/opt/zephyr-sdk/gnu/arm-zephyr-eabi/bin:$PATH"
+NCS_PATH="$T/bin:$T/usr/bin:$T/usr/local/bin:$T/opt/bin"
+NCS_PATH="$NCS_PATH:$T/opt/nanopb/generator-bin:$T/nrfutil/bin"
+NCS_PATH="$NCS_PATH:$T/opt/zephyr-sdk/gnu/arm-zephyr-eabi/bin"
+
+# The toolchain goes in front, but the system PATH has to stay on the end:
+# the Matter build shells out to plain coreutils (touch, sed, ...) that the
+# toolchain does not ship.
+PATH="$NCS_PATH:$PATH"
 export PATH
 
 LD_LIBRARY_PATH="$T/lib:$T/lib/x86_64-linux-gnu:$T/usr/local/lib:$LD_LIBRARY_PATH"
