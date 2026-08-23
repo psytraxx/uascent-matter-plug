@@ -379,6 +379,25 @@ endurance.
   the same hook that currently calls `LightSwitch::Init`.
 * **Units matter.** EPM attributes are `int64_t` in **mW / mV / mA**. Getting the
   scaling wrong is the most likely source of nonsense readings in a controller.
+
+**Confirmed from the ZCL XML** (`zcl/data-model/chip/electrical-power-measurement-cluster.xml`,
+`global-structs.xml`) — worth having to hand when writing the delegate:
+
+| Attribute | Code | Type | Optional? |
+|---|---|---|---|
+| `PowerMode` | 0x0000 | `PowerModeEnum` | mandatory — **AC = 0x02** |
+| `NumberOfMeasurementTypes` | 0x0001 | `int8u`, min 1 | mandatory |
+| `Accuracy` | 0x0002 | `MeasurementAccuracyStruct[]` | mandatory, min 1 entry |
+| `ActivePower` | 0x0008 | `power_mw` | **mandatory** |
+| `RMSVoltage` | 0x000B | `voltage_mv` | optional |
+| `RMSCurrent` | 0x000C | `amperage_ma` | optional |
+
+So `ActivePower` needs no optional-attribute bit; only RMSVoltage/RMSCurrent do. All
+are `isNullable`, so "no reading yet" is a null rather than a zero — use that for the
+pre-first-sample state and reserve 0 mW for a genuinely measured zero.
+
+`MeasurementAccuracyStruct` = { MeasurementType, Measured (bool), MinMeasuredValue,
+MaxMeasuredValue, AccuracyRanges[] (min 1 entry) }.
 * For energy, call the free function
   `ElectricalEnergyMeasurement::NotifyCumulativeEnergyMeasured(...)` with an
   `EnergyMeasurementStruct` — energy is in **mWh**. Also
