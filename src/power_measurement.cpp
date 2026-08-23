@@ -4,6 +4,7 @@
 #include <app/AttributeAccessInterface.h>
 #include <app/clusters/electrical-energy-measurement-server/electrical-energy-measurement-server.h>
 #include <app/clusters/electrical-power-measurement-server/electrical-power-measurement-server.h>
+#include <app/server/Server.h>
 #include <app/util/attribute-storage.h>
 #include <lib/support/BitMask.h>
 
@@ -114,6 +115,13 @@ EndpointId sEndpoint;
 bool sHaveLastSample;
 int64_t sLastActivePowerMw;
 int64_t sCumulativeEnergyMwh;
+int64_t sLastSampleMs;
+int64_t sLastReportMs;
+
+/* Cumulative energy is reported far less often than it is sampled: the poll
+ * rate exists to keep EPM's power attributes responsive, while EEM only needs
+ * enough resolution to track consumption over time. */
+constexpr int64_t kEnergyReportIntervalMs = 60'000;
 
 } /* namespace */
 
@@ -178,7 +186,6 @@ void PowerMeasurementUpdate(int64_t activePowerMw, int64_t rmsVoltageMv, int64_t
 	 * primes sLastActivePowerMw/sHaveLastSample and reports no energy --
 	 * see power_measurement.h. */
 	const int64_t nowMs = k_uptime_get();
-	static int64_t sLastSampleMs;
 
 	if (sHaveLastSample) {
 		const int64_t elapsedMs = nowMs - sLastSampleMs;
@@ -188,10 +195,22 @@ void PowerMeasurementUpdate(int64_t activePowerMw, int64_t rmsVoltageMv, int64_t
 		 * higher-power or much-less-frequently-polled design. */
 		sCumulativeEnergyMwh += (avgPowerMw * elapsedMs) / 3'600'000;
 
-		ElectricalEnergyMeasurement::Structs::EnergyMeasurementStruct::Type imported;
-		imported.energy = sCumulativeEnergyMwh;
-		ElectricalEnergyMeasurement::NotifyCumulativeEnergyMeasured(
-			sEndpoint, MakeOptional(imported), NullOptional);
+		/* Accumulation above is unconditional so the running total stays
+		 * correct, but the event is only worth generating when someone
+		 * can receive it. Each Notify call writes an entry to the event
+		 * buffer and bumps the persisted event number, so emitting while
+		 * uncommissioned churns that buffer and wears NVS for events no
+		 * controller will ever read -- and wakes a sleepy end device to
+		 * do it. Rate-limit the rest: cumulative energy does not need the
+		 * poll interval's resolution. */
+		if (Server::GetInstance().GetFabricTable().FabricCount() > 0 &&
+		    nowMs - sLastReportMs >= kEnergyReportIntervalMs) {
+			ElectricalEnergyMeasurement::Structs::EnergyMeasurementStruct::Type imported;
+			imported.energy = sCumulativeEnergyMwh;
+			ElectricalEnergyMeasurement::NotifyCumulativeEnergyMeasured(
+				sEndpoint, MakeOptional(imported), NullOptional);
+			sLastReportMs = nowMs;
+		}
 	}
 
 	sLastActivePowerMw = activePowerMw;
