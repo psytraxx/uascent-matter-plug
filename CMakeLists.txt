@@ -1,6 +1,6 @@
 #
-# Matter light switch for the Seeed XIAO nRF52840 Sense.
-# Ported from the NCS samples/matter/light_switch sample.
+# Matter smart plug for the Seeed XIAO nRF52840 Sense.
+# Retrofit into a BL0937 mains plug; see docs/README.md.
 #
 
 cmake_minimum_required(VERSION 3.20.0)

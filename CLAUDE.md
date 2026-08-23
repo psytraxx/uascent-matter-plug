@@ -3,6 +3,13 @@
 XIAO nRF52840 **Sense** firmware on the nRF Connect SDK (Zephyr).
 This is a west/CMake project; do not add `platformio.ini` or Arduino sources.
 
+The app is a **Matter smart plug**: the XIAO replaces the BK7231N module in an
+existing BL0937 mains plug, keeping the plug's relay, meter chip, button, and
+LED. See `docs/smart-plug-plan.md` for the design and `README.md` for usage.
+
+**Mains safety:** the BL0937 is not isolated from mains. Never connect USB
+while the plug is on mains. Develop USB-powered with mains disconnected.
+
 ## Toolchain
 
 NCS **v3.4.0** at `/home/eric/ncs`, toolchain `fbf7391cab`. Nothing is on
@@ -58,8 +65,16 @@ mode means physically double-tapping RESET.
 
 ## Matter
 
-The app is a Matter over Thread light switch, ported from NCS
-`samples/matter/light_switch`. It builds and links for this board.
+Started from NCS `samples/matter/light_switch`; the data model is now an
+On/Off Plug-in Unit (0x010A) with ElectricalPowerMeasurement (0x0090) and
+ElectricalEnergyMeasurement (0x0091) on endpoint 1.
+
+There is **no ZAP GUI in this environment**. `src/default_zap/smart_plug.zap`
+and everything under `src/default_zap/zap-generated/` are hand-maintained
+against the ZCL XML in
+`modules/lib/matter/src/app/zap-templates/zcl/data-model/chip/`. Note the
+build's `codegen.py` step parses the `.matter` IDL file, not the `.zap`, so
+the `.matter` cluster definitions must stay complete and consistent.
 
 Three board constraints follow from the UF2 flash map having no
 `slot0_partition`, and each has to be disabled in a particular way:
@@ -78,6 +93,15 @@ generated, so the pairing code is fixed; this only works while factory data is
 disabled. They are currently the Matter test defaults.
 
 The Matter common board layer requires a devicetree `/buttons` node, which
-this board lacks; `boards/xiao_ble_nrf52840_sense.overlay` adds one.
+this board lacks; `boards/xiao_ble_nrf52840_sense.overlay` adds one, plus the
+plug's relay, LED, and BL0937 pins.
 
-Flash is ~86% full, so `CONFIG_LTO=y` is required to fit.
+Those extra nodes reuse the `gpio-leds`/`gpio-keys` bindings even where the
+signal is neither an LED nor a key. That is required, not cosmetic: a node
+with no `compatible` gets no binding, so its `gpios` property is never
+expanded into the form `GPIO_DT_SPEC_GET()` needs, and the build fails.
+
+The board layer's function button is `DK_BTN1`, i.e. the first `/buttons`
+child. With only one button declared, `DK_BTN2_MSK` can never fire.
+
+Flash is ~83% full, so `CONFIG_LTO=y` is required to fit.

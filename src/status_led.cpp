@@ -26,6 +26,14 @@ bool sRelayOn;
 bool sInitialised;
 bool sBlinkOn;
 
+/* The board layer calls the LED handler once from Board::Init() with its
+ * default state (DeviceDisconnected -> Error), which matches sNetworkState's
+ * initial value above. Without this flag the "unchanged" guards below would
+ * swallow that first call and leave every LED dark until the state next
+ * changed -- and Board::UpdateDeviceState() has its own !=-guard, so that may
+ * not be until commissioning starts. Force the first render regardless. */
+bool sRendered;
+
 k_timer sBlinkTimer;
 
 void SetChannels(bool red, bool green, bool blue, bool plug)
@@ -73,6 +81,8 @@ void Apply()
 	if (!sInitialised) {
 		return;
 	}
+
+	sRendered = true;
 
 	switch (sNetworkState) {
 	case NetworkLedState::Pairing:
@@ -130,7 +140,7 @@ int StatusLedInit(void)
 
 void StatusLedSetNetworkState(NetworkLedState state)
 {
-	if (sInitialised && state == sNetworkState) {
+	if (sRendered && state == sNetworkState) {
 		return;
 	}
 
@@ -140,7 +150,7 @@ void StatusLedSetNetworkState(NetworkLedState state)
 
 void StatusLedSetRelayState(bool relayOn)
 {
-	if (sInitialised && relayOn == sRelayOn) {
+	if (relayOn == sRelayOn) {
 		return;
 	}
 
@@ -148,7 +158,11 @@ void StatusLedSetRelayState(bool relayOn)
 
 	/* While commissioning is in progress the relay-state change is still
 	 * recorded above, but does not touch the LEDs -- Apply() will pick it
-	 * up once NetworkLedState::Paired is reported. */
+	 * up once NetworkLedState::Paired is reported.
+	 *
+	 * No sRendered check here, unlike the network setter: the relay LED's
+	 * "off" default is what StatusLedInit()'s GPIO_OUTPUT_INACTIVE already
+	 * drove, so a redundant first RelaySet(false) has nothing to render. */
 	if (sNetworkState == NetworkLedState::Paired) {
 		Apply();
 	}

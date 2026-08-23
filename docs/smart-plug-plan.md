@@ -2,10 +2,11 @@
 
 ## Context
 
-The repo currently holds a **demo app** — a Matter-over-Thread light switch. Its value
-here is the surrounding setup, not the application: the toolchain invocation, UF2
-flash map, USB CDC-ACM console config, and Matter stack settings are all known-good on
-this board. **Reuse that scaffolding**; the application layer gets replaced.
+This repo started as a **demo app** — a Matter-over-Thread light switch. Its value was
+the surrounding setup, not the application: the toolchain invocation, UF2 flash map,
+USB CDC-ACM console config, and Matter stack settings are all known-good on this
+board. That scaffolding is reused; the application layer has been replaced (Step A
+done — the data model is now a plug server).
 
 The actual goal: take an existing OpenBeken/BK7231N mains smart plug
 and **replace its wireless module with the XIAO**, keeping the plug's PCB,
@@ -473,6 +474,44 @@ west build -b xiao_ble/nrf52840/sense -- -DCMAKE_JOB_POOLS="compile=4;link=1"
   isolation warning and the double-tap-RESET UF2 flashing procedure.
 * Updated `CLAUDE.md` reflecting the plug role, the new pin map, and the mains-safety
   rule.
+
+## Review findings (post Step A)
+
+A multi-angle review of the Step A branch. Two real bugs found and fixed; the
+rest are recorded so they are not rediscovered.
+
+**Fixed:**
+
+* **LEDs stayed dark at boot.** `sNetworkState` was initialised to `Error`,
+  and the board layer's one unconditional `Board::Init()` callback also passes
+  `Error` (its `mState` defaults to `DeviceDisconnected`) — so the
+  "unchanged" guard swallowed the first render and nothing lit up. Worse than
+  it sounds, because `Board::UpdateDeviceState()` has its own `!=` guard, so
+  the LEDs would have stayed dark until commissioning began. Fixed with an
+  explicit `sRendered` flag.
+* **Dead button path.** `APPLICATION_BUTTON_MASK` was `DK_BTN2_MSK`, but the
+  overlay now declares a single button, so bit 1 could never be set — the
+  whole handler branch was unreachable. Now `DK_BTN1_MSK`, matching the board
+  layer's function button. The dimmer timers/handlers were deleted outright
+  rather than left as stubs; git history has them if needed.
+
+**Known and deliberate:**
+
+* `RelaySet()` has no callers. OnOff commands from a controller return
+  Success and update the attribute but do not switch the relay — the
+  `MatterPostAttributeChangeCallback` bridge is Phase 2. **This will look like
+  working On/Off in a controller UI**, so do not treat that as a passing test.
+
+**Watch items:**
+
+* The overlay's `gpio-leds`/`gpio-keys` reuse is safe only because
+  `CONFIG_LED` and `CONFIG_INPUT` are both off (verified in the build's
+  `.config`). If anything turns either on, those drivers would attach to
+  `relay_drive`/`bl0937_*` and fight the application for the pins — a driver
+  could drive the relay at init, before `RelayInit()` runs.
+* `Apply()` and `BlinkTimerHandler()` each spell out the state→channel
+  mapping. A third indication axis (identify, OTA) would multiply the cases;
+  worth collapsing to one render function at that point, not before.
 
 ## Sequencing — fit check first, hardware last
 

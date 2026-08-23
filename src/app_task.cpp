@@ -26,32 +26,23 @@ using namespace ::chip::DeviceLayer;
 
 namespace
 {
-constexpr uint32_t kDimmerTriggeredTimeout = 500;
-constexpr uint32_t kDimmerInterval = 300;
-constexpr EndpointId kLightSwitchEndpointId = 1;
-constexpr EndpointId kLightEndpointId = 1;
+constexpr EndpointId kPlugEndpointId = 1;
 
-k_timer sDimmerPressKeyTimer;
-k_timer sDimmerTimer;
+Nrf::Matter::IdentifyCluster sIdentifyCluster(kPlugEndpointId);
 
-Nrf::Matter::IdentifyCluster sIdentifyCluster(kLightEndpointId);
-
-bool sWasDimmerTriggered = false;
-
-#define APPLICATION_BUTTON_MASK DK_BTN2_MSK
+/* The plug has a single tactile switch, wired to the board layer's function
+ * button (DK_BTN1). Long press is consumed by Nrf::Board's FunctionHandler
+ * for factory reset; the short press is ours to handle. */
+#define APPLICATION_BUTTON_MASK DK_BTN1_MSK
 
 #ifdef CONFIG_CHIP_ICD_UAT_SUPPORT
 #define UAT_BUTTON_MASK DK_BTN3_MSK
 #endif
 } /* namespace */
 
-/* Custom status indication, replacing the DK four-LED scheme. The XIAO has a
- * single RGB LED, so the device state is rendered as a colour:
- *   blue blinking - unprovisioned, commissioning window open (pairing mode)
- *   green solid   - provisioned onto a Matter fabric
- *   red solid     - not provisioned and not advertising, so nothing can
- *                   progress without a reset; check the console.
- * Registered via Board::Init(), which calls it on every device state change. */
+/* Feeds the network axis of the LED indication; see src/status_led.h for the
+ * full truth table and the relay axis. Registered via Board::Init(), which
+ * calls it once at startup and again on every device state change. */
 void AppTask::UpdateStatusLed()
 {
 	switch (Nrf::GetBoard().GetDeviceState()) {
@@ -69,96 +60,21 @@ void AppTask::UpdateStatusLed()
 	}
 }
 
-void AppTask::DimmerTriggerEventHandler()
-{
-	if (!sWasDimmerTriggered) {
-		// TODO(phase 2): toggle the relay through the OnOff cluster instead of the
-		// light-switch client's InitiateActionSwitch().
-	}
-
-	Instance().CancelTimer(Timer::Dimmer);
-	Instance().CancelTimer(Timer::DimmerTrigger);
-	sWasDimmerTriggered = false;
-}
-
-void AppTask::TimerEventHandler(const Timer &timerType)
-{
-	switch (timerType) {
-	case Timer::DimmerTrigger:
-		LOG_INF("Dimming started...");
-		sWasDimmerTriggered = true;
-		// TODO(phase 2): this dimmer press-and-hold behavior belongs to the light-switch
-		// client role and is being replaced by short-press-toggle/long-press-factory-reset.
-		Instance().StartTimer(Timer::Dimmer, kDimmerInterval);
-		Instance().CancelTimer(Timer::DimmerTrigger);
-		break;
-	case Timer::Dimmer:
-		// TODO(phase 2): dimmer brightness ramping does not apply to a simple on/off plug.
-		break;
-	default:
-		break;
-	}
-}
-
 void AppTask::ButtonEventHandler(Nrf::ButtonState state, Nrf::ButtonMask hasChanged)
 {
-	if ((APPLICATION_BUTTON_MASK & state & hasChanged)) {
-		LOG_INF("Button has been pressed, keep in this state for at least 500 ms to change light sensitivity of bound lighting devices.");
-		Instance().StartTimer(Timer::DimmerTrigger, kDimmerTriggeredTimeout);
-	} else if ((APPLICATION_BUTTON_MASK & hasChanged)) {
-		Nrf::PostTask([] { DimmerTriggerEventHandler(); });
+	if (APPLICATION_BUTTON_MASK & hasChanged & ~state) {
+		/* Released. TODO(phase 2): toggle the OnOff attribute on
+		 * kPlugEndpointId here, so the relay change is reported to
+		 * Matter rather than driving RelaySet() behind the cluster's
+		 * back. A long press never reaches this point -- Nrf::Board's
+		 * FunctionHandler consumes it for factory reset first. */
+		LOG_INF("Plug button released (short press)");
 #ifdef CONFIG_CHIP_ICD_UAT_SUPPORT
 	} else if ((UAT_BUTTON_MASK & state & hasChanged)) {
 		LOG_INF("ICD UserActiveMode has been triggered.");
 		Server::GetInstance().GetICDManager().OnNetworkActivity();
 #endif
 	}
-}
-
-void AppTask::StartTimer(Timer timer, uint32_t timeoutMs)
-{
-	switch (timer) {
-	case Timer::DimmerTrigger:
-		k_timer_start(&sDimmerPressKeyTimer, K_MSEC(timeoutMs), K_NO_WAIT);
-		break;
-	case Timer::Dimmer:
-		k_timer_start(&sDimmerTimer, K_MSEC(timeoutMs), K_MSEC(timeoutMs));
-		break;
-	default:
-		break;
-	}
-}
-
-void AppTask::CancelTimer(Timer timer)
-{
-	switch (timer) {
-	case Timer::DimmerTrigger:
-		k_timer_stop(&sDimmerPressKeyTimer);
-		break;
-	case Timer::Dimmer:
-		k_timer_stop(&sDimmerTimer);
-		break;
-	default:
-		break;
-	}
-}
-
-void AppTask::UserTimerTimeoutCallback(k_timer *timer)
-{
-	if (!timer) {
-		return;
-	}
-	Timer timerType;
-
-	if (timer == &sDimmerPressKeyTimer) {
-		timerType = Timer::DimmerTrigger;
-	} else if (timer == &sDimmerTimer) {
-		timerType = Timer::Dimmer;
-	} else {
-		return;
-	}
-
-	Nrf::PostTask([timerType]() { TimerEventHandler(timerType); });
 }
 
 CHIP_ERROR AppTask::Init()
@@ -169,10 +85,6 @@ CHIP_ERROR AppTask::Init()
 		// init needs to go here, replacing the light-switch client's LightSwitch::Init().
 		return CHIP_NO_ERROR;
 	} }));
-
-	/* Initialize application timers */
-	k_timer_init(&sDimmerPressKeyTimer, AppTask::UserTimerTimeoutCallback, nullptr);
-	k_timer_init(&sDimmerTimer, AppTask::UserTimerTimeoutCallback, nullptr);
 
 	const int ledErr = StatusLedInit();
 	if (ledErr) {

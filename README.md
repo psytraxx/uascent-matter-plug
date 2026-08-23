@@ -1,180 +1,165 @@
 # blink
 
-Seeed **XIAO nRF52840 Sense** firmware on the nRF Connect SDK (Zephyr).
+Firmware turning a **Seeed XIAO nRF52840 Sense** into a **Matter smart plug**.
 
-A **Matter over Thread light switch**, ported from the NCS
-`samples/matter/light_switch` sample. It binds to a Matter lighting device and
-toggles or dims it.
+It replaces the wireless module in an existing mains plug. The plug's own
+board keeps doing the electrical work — relay, power meter, button, LED — and
+this board becomes its brain, speaking Matter over Thread instead of the
+vendor's cloud.
 
-The on-board RGB LED shows the commissioning state:
+> **Status: not finished.** The device commissions and the data model is in
+> place, but the relay is not yet wired to Matter commands and the power meter
+> is not implemented. See [Current state](#current-state).
 
-| Indication | Meaning |
-| --- | --- |
-| Blue, blinking | Unprovisioned: commissioning window open (pairing mode) |
-| Green, solid | Provisioned onto a Matter fabric |
-| Red, solid | Not provisioned and not advertising -- check the console |
+## ⚠️ Mains safety
 
-See [Matter](#matter) for the pairing code and the board-specific
-configuration.
+The plug's power-measuring chip (BL0937) is **not isolated from mains**. Its
+ground sits at mains potential.
+
+**Never plug the board into USB while the plug is connected to mains.** That
+would put your computer's USB ground at mains potential.
+
+Develop with the board USB-powered and **mains disconnected**. Everything
+except real power readings works that way. See
+[docs/smart-plug-plan.md](docs/smart-plug-plan.md).
+
+## Hardware
+
+| Signal | XIAO pad | Purpose |
+| --- | --- | --- |
+| Button | D0 | Short press = toggle relay, long press (3 s) = factory reset |
+| Relay | D6 | Switches the load |
+| Plug LED | P0.17 | The plug's own red LED |
+| BL0937 CF | D2 | Power pulses from the meter chip |
+| BL0937 CF1 | D3 | Voltage/current pulses |
+| BL0937 SEL | D4 | Selects which of the two CF1 reports |
+
+**These pin choices are provisional.** The plug's board has not been traced
+yet, so they are guesses that are electrically sensible. They live in
+`boards/xiao_ble_nrf52840_sense.overlay` — correcting them is a one-file
+change, no code edits.
+
+P0.17 normally drives the module's battery-charge LED. A mains plug has no
+battery, so it is free.
+
+### LEDs
+
+Two LEDs show two different things. Commissioning always wins over relay
+state.
+
+| Situation | Plug's red LED | Board's RGB LED |
+| --- | --- | --- |
+| Pairing mode | blinking | blue, blinking |
+| Paired, load on | on | green |
+| Paired, load off | off | off |
+| Fault | fast blink | red, fast blink |
 
 ## Prerequisites
 
-nRF Connect SDK **v3.4.0** at `/home/eric/ncs`, with toolchain `fbf7391cab`.
-The SDK is not on `PATH`; the commands below assume the environment described
-in [CLAUDE.md](CLAUDE.md), or use the VS Code nRF Connect extension.
+nRF Connect SDK **v3.4.0** at `/home/eric/ncs`, toolchain `fbf7391cab`. Not on
+`PATH` — the scripts below set it up themselves. Override with `NCS_ROOT`,
+`NCS_VERSION`, `NCS_TOOLCHAIN` if your SDK is elsewhere.
 
-## Scripts
+## Usage
 
-`scripts/` wraps the three things you actually do. They set the SDK
-environment themselves, so they work from a plain shell:
-
-| Script | Purpose |
-| --- | --- |
-| `scripts/build.sh` | Build (`-p` for a pristine rebuild) |
-| `scripts/flash.sh` | Flash over UF2 (`-b` to build first) |
-| `scripts/monitor.sh` | Watch the USB console |
-
-They assume the SDK layout in [CLAUDE.md](CLAUDE.md); override with
-`NCS_ROOT`, `NCS_VERSION`, or `NCS_TOOLCHAIN` if it lives elsewhere.
+```sh
+scripts/build.sh -b     # build (-p for a clean rebuild)
+scripts/flash.sh -b     # build, then flash
+scripts/monitor.sh      # watch the console
+```
 
 Typical loop:
 
 ```sh
-scripts/flash.sh -b     # build, then flash (double-tap RESET when asked)
-scripts/monitor.sh      # watch it boot
-```
-
-## Build
-
-```sh
-scripts/build.sh
-```
-
-or, with the environment from [CLAUDE.md](CLAUDE.md) already set up:
-
-```sh
-west build -b xiao_ble/nrf52840/sense
-```
-
-The board target must include the `sense` variant. Plain `xiao_ble/nrf52840`
-selects the non-Sense board, which has a different pin map.
-
-Compiles go through `ccache` automatically when it is on `PATH`.
-
-Current footprint: ~695 KB flash (86% of the 788 KB app partition), ~166 KB
-RAM. The flash headroom is thin -- `CONFIG_LTO=y` is required to fit.
-
-## Flash
-
-```sh
-scripts/flash.sh
-```
-
-The XIAO ships the **Adafruit UF2 bootloader** and has no on-board debug
-probe, so flashing is drag-and-drop rather than `west flash`. The script
-automates the steps below, waiting for the drive to appear:
-
-1. Double-tap the RESET button. The board re-enumerates as USB `2886:0045` (bootloader)
-   and mounts as a mass-storage drive (`XIAO-SENSE`).
-2. Copy the UF2 onto it:
-
-   ```sh
-   cp build/blink/zephyr/zephyr.uf2 /run/media/$USER/XIAO-SENSE/
-   ```
-
-3. The board reboots into the new firmware automatically.
-
-`west flash` will not work without an external SWD probe.
-
-## Monitor
-
-The console is USB CDC-ACM, provided by the board's devicetree
-(`cdc_acm_serial.dtsi`). After the firmware boots:
-
-```sh
+scripts/flash.sh -b     # double-tap RESET when asked
 scripts/monitor.sh
 ```
 
-or any serial terminal; the baud rate is irrelevant for USB CDC:
+### Flashing
 
-```sh
-minicom -D /dev/serial/by-id/usb-Zephyr_Project_CDC_ACM_serial_backend_*-if00
-```
+No debug probe on this board, so `west flash` does not work. Flashing is
+drag-and-drop:
 
-The console only exists while the firmware is running. In the UF2 bootloader
-the board enumerates as `2886:0045` with no serial port.
+1. Double-tap RESET. The board appears as a USB drive named `XIAO-SENSE`.
+2. Copy `build/blink/zephyr/zephyr.uf2` onto it.
+3. It reboots into the new firmware.
 
-`scripts/monitor.sh` reattaches automatically when the port comes back, so it
-survives a reflash or a reset without being restarted (`--once` to exit
-instead). There is no host-side reset like `espflash monitor`'s Ctrl-R: the
-CDC-ACM port is emulated by the nRF52840 itself rather than by a separate
-USB-serial chip, so DTR/RTS are not wired to the reset pin and nothing the
-host sends can restart the MCU. Use the RESET button, or double-tap it for
-the bootloader.
+`scripts/flash.sh` does this for you and waits for the drive.
 
-Two console settings are load-bearing on this board, both driven by there
-being a single CDC-ACM port shared by everything:
+### Console
 
-* The Matter shell (`CONFIG_CHIP_LIB_SHELL`) is **off**. The light_switch
-  sample enables it, but it assumes a UART separate from the log backend; on
-  one shared port its prompt races the log output and corrupts both.
-* `CONFIG_LOG_MODE_DEFERRED=y`. The default `LOG_MODE_MINIMAL` drops messages
-  under load rather than buffering them, which truncated the onboarding-code
-  block mid-line during the boot burst.
+USB serial. `scripts/monitor.sh` reconnects by itself across resets and
+reflashes, so you can leave it running.
 
-## Matter
+The console only exists while the firmware runs — in bootloader mode there is
+no serial port. Nothing the host sends can reset the board (the serial port is
+emulated by the chip itself, so there is no DTR-to-reset wire). Use the RESET
+button.
 
-The device is a Matter over Thread light switch. It needs a Thread border
-router and a Matter controller (for example `chip-tool`) to commission.
+## Pairing
 
-### Pairing code
+Needs a Thread border router and a Matter controller (e.g. `chip-tool`).
 
-The onboarding credentials are **compiled into the image** from `prj.conf`
-rather than being generated per-device, so the pairing code is known ahead of
-time and does not have to be read off the serial console:
+The pairing code is **compiled in**, not per-device:
 
 ```
-CONFIG_CHIP_DEVICE_DISCRIMINATOR=0xF00
-CONFIG_CHIP_DEVICE_SPAKE2_PASSCODE=20202021
+Manual pairing code: 3497-011-2332
+Passcode:            20202021
+Discriminator:       0xF00
 ```
 
-That is passcode `20202021`, discriminator `0xF00` -- manual pairing code
-**3497-011-2332**. These are the Matter *test* defaults: they are fine for
-bench work, but change both before using this anywhere real. The firmware also
-prints the authoritative pairing code and QR payload to the console at boot,
-which is worth checking against after changing either value.
+These are Matter's **test defaults** — fine for the bench, change them
+(`prj.conf`) before anything real. The firmware also prints the code and a QR
+payload to the console at boot.
 
-This works because factory data is disabled on this board (see below); with
-`CHIP_FACTORY_DATA` enabled, the credentials would come from a flash partition
-instead and these Kconfig values would be ignored.
+## Current state
 
-### Buttons
+| Works | Not yet |
+| --- | --- |
+| Commissions onto a Matter fabric | Matter On/Off actually switching the relay |
+| Data model: On/Off + power + energy | Button toggling the relay |
+| Relay driver, LED indication | Reading the BL0937 power meter |
+| Long-press factory reset | |
 
-The Matter common board layer requires a devicetree `/buttons` node, and the
-XIAO has no on-board user button. `boards/xiao_ble_nrf52840_sense.overlay`
-declares two on pads **D0** (P0.02, function button) and **D1** (P0.03, switch
-button), both active-low with an internal pull-up: wire a momentary switch
-from the pad to ground. The firmware builds and commissions without anything
-wired up; only the button-driven actions (factory reset, toggle/dim) need it.
+Sending On/Off from a controller **reports success but does nothing** — the
+cluster is not yet connected to the relay. That is the next step.
 
-### Board-specific configuration
+Footprint: ~654 KB flash (83% of the 788 KB app partition), ~178 KB RAM.
+`CONFIG_LTO=y` is required to fit.
 
-The XIAO ships the Adafruit UF2 bootloader, whose flash map has no MCUboot
-`slot0_partition`. Everything that assumes one has to be switched off, and
-each of these is disabled in a specific way for a specific reason:
+## Why this board is configured oddly
 
-* **MCUboot** cannot be built at all: `SB_CONFIG_BOOTLOADER_NONE=y`.
-* **Factory data** is reached through a `choice`, so it is disabled by
-  selecting the branch (`CONFIG_CHIP_FACTORY_DATA_NONE=y`), not by assigning
-  `=n`. Same for the Matter bootloader choice
-  (`CONFIG_CHIP_BOOTLOADER_NONE=y`), whose MCUboot branch hard-`select`s
-  `IMG_MANAGER` -- and a `select` cannot be overridden with `=n`.
-* **The OTA requestor** is disabled from `sysbuild.conf`
-  (`SB_CONFIG_MATTER_OTA=n`), *not* from `prj.conf`. Sysbuild force-writes
-  `CONFIG_CHIP_OTA_REQUESTOR` into the application config after `prj.conf` and
-  the application `Kconfig` are merged, so an assignment in either is silently
-  overwritten. This was the long-standing blocker on building Matter for this
-  board; setting it here is what resolved it.
+Notes for anyone changing the build. Each of these is load-bearing.
 
-The consequence is no OTA firmware update: the board is flashed over UF2, and
-`CONFIG_CHIP_OTA_IMAGE_BUILD` is off, so no OTA image is produced.
+**Flashing/boot.** The board's UF2 bootloader leaves no room for the usual
+Matter update machinery, so it is all disabled — and each has to be disabled a
+specific way:
+
+* `SB_CONFIG_BOOTLOADER_NONE=y` — no MCUboot.
+* `CONFIG_CHIP_FACTORY_DATA_NONE=y`, `CONFIG_CHIP_BOOTLOADER_NONE=y` — these
+  are Kconfig *choices*, so you pick the "none" branch rather than writing
+  `=n`, which would not work.
+* `SB_CONFIG_MATTER_OTA=n` must be in **`sysbuild.conf`**, not `prj.conf` —
+  sysbuild overwrites the `prj.conf` value afterwards. This was the
+  long-standing blocker on building Matter for this board.
+
+Consequence: no over-the-air updates. Flash over UF2.
+
+**Console.** One USB serial port shared by everything, so:
+
+* Matter shell off (`CONFIG_CHIP_LIB_SHELL=n`) — it assumes its own port and
+  garbles the log otherwise.
+* `CONFIG_LOG_MODE_DEFERRED=y` — the default drops messages under load, which
+  cut off the pairing code during boot.
+* Do **not** enable `CONFIG_USB_DEVICE_STACK`. This board uses the newer USB
+  stack; enabling both breaks the link.
+
+**Board target** must be `xiao_ble/nrf52840/sense`. Without `sense` you get a
+different board with a different pin map.
+
+## Docs
+
+* [docs/smart-plug-plan.md](docs/smart-plug-plan.md) — full design, bring-up
+  order, and what is left to do.
+* [docs/pinout.md](docs/pinout.md) — the XIAO module's own pin reference.
+* [CLAUDE.md](CLAUDE.md) — toolchain setup details.
