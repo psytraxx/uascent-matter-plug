@@ -349,7 +349,7 @@ cancel window. No new code needed — just do not consume that button's long pre
 the app handler. Note the board layer keys this to button 0, so the plug's single
 physical button must be wired to the `sw0`/`button0` node.
 
-The overlay's current two-button node (`boards/xiao_ble_nrf52840_sense.overlay`)
+The overlay's current two-button node (`boards/xiao_ble.overlay`)
 collapses to **one** button; the plug has a single tactile switch. Reducing
 `NUMBER_OF_BUTTONS` to 1 also disables the board layer's
 `AdvertisingConsts::kAdvertisingTriggerTimeout` path, which is fine.
@@ -463,7 +463,7 @@ D). `CONFIG_LTO=y` stays mandatory.
 Build with the memory-constrained job pool per CLAUDE.md:
 
 ```
-west build -b xiao_ble/nrf52840/sense -- -DCMAKE_JOB_POOLS="compile=4;link=1"
+west build -b xiao_ble -- -DCMAKE_JOB_POOLS="compile=4;link=1"
 ```
 
 ### Verification, in a safe order
@@ -502,7 +502,7 @@ west build -b xiao_ble/nrf52840/sense -- -DCMAKE_JOB_POOLS="compile=4;link=1"
 
 * `plug-pinout.md` — traced net list, confirmed pin assignments, SEL polarity,
   calibration constants.
-* Updated `boards/xiao_ble_nrf52840_sense.overlay` — single button, relay, plug red
+* Updated `boards/xiao_ble.overlay` — single button, relay, plug red
   LED on P0.17, BL0937 node.
 * New `src/relay.*` ✅, `src/power_measurement.*` ✅, `src/zcl_callbacks.cpp` ✅ (OnOff->relay bridge, not yet hardware-verified), `src/bl0937.*` ✅ (Phase 3, not yet hardware-verified).
 * `src/meter_stub.*` served the step-C fit check and mains-free reporting-path

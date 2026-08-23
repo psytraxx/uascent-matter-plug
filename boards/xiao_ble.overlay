@@ -4,8 +4,15 @@
  * is traced (docs/plug-pinout.md) -- only this file should need to change
  * once that trace confirms or corrects the assignment.
  *
- * Pad budget, derived from docs/pinout.md (Seeed's XIAO nRF52840 Sense
- * reference) and cross-checked against
+ * Board target: xiao_ble (plain, no IMU/microphone) -- confirmed by physical
+ * inspection, no LSM6DSL/microphone package on the board. The plain and
+ * Sense variants share the same D0-D10 connector pinout
+ * (seeed_xiao_connector.dtsi is common to both); Sense only adds the IMU/mic
+ * devicetree nodes and enables I2C0 for them, which is why no
+ * IMU-disable node is needed here.
+ *
+ * Pad budget, derived from docs/pinout.md (Seeed's XIAO nRF52840 reference)
+ * and cross-checked against
  * zephyr/boards/seeed/xiao_ble/seeed_xiao_connector.dtsi:
  *
  *   D0 / P0.02  - plug tactile switch (short = toggle relay, long = factory
@@ -50,15 +57,6 @@
  * plain GPIO calls the same way src/status_led.cpp and src/relay.cpp already
  * do for led0-led4.
  */
-
-/* The Sense variant's on-board LSM6DSL IMU is wired on I2C0, which this
- * design doesn't use (see the D4/D5 note above) and nothing in the app
- * touches the sensor subsystem. Disabling it drops "LSM6DSL: Failed to
- * initialize chip" from every boot log and pulls CONFIG_SENSOR/LSM6DSL back
- * out of the build. */
-&lsm6ds3tr_c {
-	status = "disabled";
-};
 
 / {
 	buttons {

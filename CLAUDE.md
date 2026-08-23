@@ -22,7 +22,7 @@ export LD_LIBRARY_PATH=$T/lib:$T/lib/x86_64-linux-gnu:$T/usr/local/lib:$LD_LIBRA
 export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 export ZEPHYR_SDK_INSTALL_DIR=$T/opt/zephyr-sdk
 export ZEPHYR_BASE=/home/eric/ncs/v3.4.0/zephyr
-west build -b xiao_ble/nrf52840/sense
+west build -b xiao_ble
 ```
 
 Matter builds are memory-hungry with LTO and get OOM-killed (exit 137) on this
@@ -31,8 +31,12 @@ machine at default parallelism. Pass
 
 ## Hardware
 
-Board target is **`xiao_ble/nrf52840/sense`**. The `sense` variant matters: the
-plain `xiao_ble/nrf52840` target has a different pin map.
+Board target is **`xiao_ble`** (plain, no IMU/microphone) — confirmed by
+physical inspection of the board. The plain and Sense variants share the
+same D0–D10 connector pinout (`seeed_xiao_connector.dtsi` is common to
+both); Sense only adds IMU/microphone devicetree nodes and enables I2C0 for
+them, so nothing pin-related depends on getting this choice right beyond
+those two unused peripherals.
 
 USB IDs: `2886:0045` is the **UF2 bootloader**, which also exposes the
 `XIAO-SENSE` mass-storage drive. With this firmware running, the board
@@ -93,7 +97,7 @@ generated, so the pairing code is fixed; this only works while factory data is
 disabled. They are currently the Matter test defaults.
 
 The Matter common board layer requires a devicetree `/buttons` node, which
-this board lacks; `boards/xiao_ble_nrf52840_sense.overlay` adds one, plus the
+this board lacks; `boards/xiao_ble.overlay` adds one, plus the
 plug's relay, LED, and BL0937 pins.
 
 Those extra nodes reuse the `gpio-leds`/`gpio-keys` bindings even where the

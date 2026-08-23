@@ -37,7 +37,7 @@ except real power readings works that way. See
 
 **These pin choices are provisional.** The plug's board has not been traced
 yet, so they are guesses that are electrically sensible. They live in
-`boards/xiao_ble_nrf52840_sense.overlay` — correcting them is a one-file
+`boards/xiao_ble.overlay` — correcting them is a one-file
 change, no code edits. Full rationale in
 [docs/smart-plug-plan.md](docs/smart-plug-plan.md).
 
@@ -154,8 +154,9 @@ Consequence: no over-the-air updates. Flash over UF2.
 * Do **not** enable `CONFIG_USB_DEVICE_STACK`. This board uses the newer USB
   stack; enabling both breaks the link.
 
-**Board target** must be `xiao_ble/nrf52840/sense`. Without `sense` you get a
-different board with a different pin map.
+**Board target** is `xiao_ble` (plain, no IMU/microphone) — confirmed by
+physical inspection. Both variants share the same D0–D10 connector pinout,
+so this only matters for the unused IMU/microphone peripherals.
 
 ## Docs
 

@@ -36,4 +36,4 @@ export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 export ZEPHYR_SDK_INSTALL_DIR="$T/opt/zephyr-sdk"
 export ZEPHYR_BASE="$NCS_ROOT/$NCS_VERSION/zephyr"
 
-export BOARD=${BOARD:-xiao_ble/nrf52840/sense}
+export BOARD=${BOARD:-xiao_ble}
