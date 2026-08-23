@@ -104,6 +104,14 @@ minicom -D /dev/serial/by-id/usb-Zephyr_Project_CDC_ACM_serial_backend_*-if00
 The console only exists while the firmware is running. In the UF2 bootloader
 the board enumerates as `2886:0045` with no serial port.
 
+`scripts/monitor.sh` reattaches automatically when the port comes back, so it
+survives a reflash or a reset without being restarted (`--once` to exit
+instead). There is no host-side reset like `espflash monitor`'s Ctrl-R: the
+CDC-ACM port is emulated by the nRF52840 itself rather than by a separate
+USB-serial chip, so DTR/RTS are not wired to the reset pin and nothing the
+host sends can restart the MCU. Use the RESET button, or double-tap it for
+the bootloader.
+
 Two console settings are load-bearing on this board, both driven by there
 being a single CDC-ACM port shared by everything:
 
