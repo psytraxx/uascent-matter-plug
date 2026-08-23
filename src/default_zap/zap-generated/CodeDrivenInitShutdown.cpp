@@ -32,9 +32,6 @@ void MatterClusterServerInitCallback(EndpointId endpoint, ClusterId clusterId)
 	case app::Clusters::Descriptor::Id:
 		MatterDescriptorClusterInitCallback(endpoint);
 		break;
-	case app::Clusters::Binding::Id:
-		MatterBindingClusterInitCallback(endpoint);
-		break;
 	case app::Clusters::AccessControl::Id:
 		MatterAccessControlClusterInitCallback(endpoint);
 		break;
@@ -76,9 +73,6 @@ void MatterClusterServerShutdownCallback(EndpointId endpoint, ClusterId clusterI
 		break;
 	case app::Clusters::Descriptor::Id:
 		MatterDescriptorClusterShutdownCallback(endpoint);
-		break;
-	case app::Clusters::Binding::Id:
-		MatterBindingClusterShutdownCallback(endpoint);
 		break;
 	case app::Clusters::AccessControl::Id:
 		MatterAccessControlClusterShutdownCallback(endpoint);

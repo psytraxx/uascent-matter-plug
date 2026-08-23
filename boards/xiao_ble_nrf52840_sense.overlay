@@ -29,12 +29,18 @@
  * D1/D5/D7-D10 are deliberately left unused as spares (D4/D5 are the I2C
  * pair, D6/D7 the UART pair -- avoided for a possible future sensor).
  *
- * The relay and bl0937 nodes below carry no "compatible" -- they are plain
- * GPIO producers with no driver binding, read directly via
- * GPIO_DT_SPEC_GET(DT_NODELABEL(...), gpios) the same way src/status_led.cpp
- * already reads led0/led1/led2. The plug LED instead extends the existing
- * gpio-leds node so it keeps using the DT_ALIAS() pattern status_led.cpp
- * already relies on.
+ * All GPIO producer/consumer nodes below reuse Zephyr's "gpio-leds" /
+ * "gpio-keys" bindings even where the node is not literally an LED or a key
+ * (SEL is an output that is neither; CF/CF1 are pulse inputs, not buttons).
+ * That is deliberate, not cosmetic: only a node with a *binding* gets its
+ * "gpios" property expanded by the devicetree generator into the .port/.pin
+ * fields GPIO_DT_SPEC_GET() needs -- a bare node with no "compatible" does
+ * not, and fails to build. gpio-leds/gpio-keys are simply the two bindings
+ * Zephyr ships whose child schema is "one gpios property, nothing else",
+ * which is all any of these signals needs; no LED or button driver actually
+ * attaches to bl0937_sel/cf/cf1 or relay_drive, they're read/driven with
+ * plain GPIO calls the same way src/status_led.cpp and src/relay.cpp already
+ * do for led0-led3.
  */
 
 / {
@@ -44,6 +50,20 @@
 		button0: button_0 {
 			gpios = <&gpio0 2 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
 			label = "Plug switch (D0)";
+		};
+	};
+
+	bl0937_pulses: bl0937_pulses {
+		compatible = "gpio-keys";
+
+		bl0937_cf: bl0937_cf {
+			gpios = <&gpio0 28 GPIO_ACTIVE_HIGH>;
+			label = "BL0937 CF (D2)";
+		};
+
+		bl0937_cf1: bl0937_cf1 {
+			gpios = <&gpio0 29 GPIO_ACTIVE_HIGH>;
+			label = "BL0937 CF1 (D3)";
 		};
 	};
 
@@ -59,25 +79,15 @@
 			gpios = <&gpio0 17 GPIO_ACTIVE_LOW>;
 			label = "Plug status LED (red)";
 		};
-	};
 
-	relay_drive: relay_drive {
-		gpios = <&gpio1 11 GPIO_ACTIVE_HIGH>;
-		label = "Relay drive (D6)";
-	};
+		relay_drive: relay_drive {
+			gpios = <&gpio1 11 GPIO_ACTIVE_HIGH>;
+			label = "Relay drive (D6)";
+		};
 
-	bl0937_cf: bl0937_cf {
-		gpios = <&gpio0 28 GPIO_ACTIVE_HIGH>;
-		label = "BL0937 CF (D2)";
-	};
-
-	bl0937_cf1: bl0937_cf1 {
-		gpios = <&gpio0 29 GPIO_ACTIVE_HIGH>;
-		label = "BL0937 CF1 (D3)";
-	};
-
-	bl0937_sel: bl0937_sel {
-		gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;
-		label = "BL0937 SEL (D4)";
+		bl0937_sel: bl0937_sel {
+			gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;
+			label = "BL0937 SEL (D4)";
+		};
 	};
 };

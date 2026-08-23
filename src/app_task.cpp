@@ -6,7 +6,7 @@
 
 #include "app_task.h"
 
-#include "light_switch.h"
+#include "relay.h"
 #include "status_led.h"
 
 #include "app/matter_init.h"
@@ -56,15 +56,15 @@ void AppTask::UpdateStatusLed()
 {
 	switch (Nrf::GetBoard().GetDeviceState()) {
 	case Nrf::DeviceState::DeviceProvisioned:
-		StatusLedSet(StatusLedState::Paired);
+		StatusLedSetNetworkState(NetworkLedState::Paired);
 		break;
 	case Nrf::DeviceState::DeviceAdvertisingBLE:
 	case Nrf::DeviceState::DeviceConnectedBLE:
-		StatusLedSet(StatusLedState::Pairing);
+		StatusLedSetNetworkState(NetworkLedState::Pairing);
 		break;
 	case Nrf::DeviceState::DeviceDisconnected:
 	default:
-		StatusLedSet(StatusLedState::Error);
+		StatusLedSetNetworkState(NetworkLedState::Error);
 		break;
 	}
 }
@@ -72,7 +72,8 @@ void AppTask::UpdateStatusLed()
 void AppTask::DimmerTriggerEventHandler()
 {
 	if (!sWasDimmerTriggered) {
-		LightSwitch::GetInstance().InitiateActionSwitch(LightSwitch::Action::Toggle);
+		// TODO(phase 2): toggle the relay through the OnOff cluster instead of the
+		// light-switch client's InitiateActionSwitch().
 	}
 
 	Instance().CancelTimer(Timer::Dimmer);
@@ -86,12 +87,13 @@ void AppTask::TimerEventHandler(const Timer &timerType)
 	case Timer::DimmerTrigger:
 		LOG_INF("Dimming started...");
 		sWasDimmerTriggered = true;
-		LightSwitch::GetInstance().InitiateActionSwitch(LightSwitch::Action::On);
+		// TODO(phase 2): this dimmer press-and-hold behavior belongs to the light-switch
+		// client role and is being replaced by short-press-toggle/long-press-factory-reset.
 		Instance().StartTimer(Timer::Dimmer, kDimmerInterval);
 		Instance().CancelTimer(Timer::DimmerTrigger);
 		break;
 	case Timer::Dimmer:
-		LightSwitch::GetInstance().DimmerChangeBrightness();
+		// TODO(phase 2): dimmer brightness ramping does not apply to a simple on/off plug.
 		break;
 	default:
 		break;
@@ -163,7 +165,8 @@ CHIP_ERROR AppTask::Init()
 {
 	/* Initialize Matter stack */
 	ReturnErrorOnFailure(Nrf::Matter::PrepareServer(Nrf::Matter::InitData{ .mPostServerInitClbk = [] {
-		LightSwitch::GetInstance().Init(kLightSwitchEndpointId);
+		// TODO(phase 2/4): relay and ElectricalPowerMeasurement/ElectricalEnergyMeasurement
+		// init needs to go here, replacing the light-switch client's LightSwitch::Init().
 		return CHIP_NO_ERROR;
 	} }));
 
@@ -174,6 +177,14 @@ CHIP_ERROR AppTask::Init()
 	const int ledErr = StatusLedInit();
 	if (ledErr) {
 		LOG_ERR("Status LED init failed (%d)", ledErr);
+		return CHIP_ERROR_INCORRECT_STATE;
+	}
+
+	/* Before the Matter stack starts, so the load is guaranteed off until
+	 * something explicitly switches it on. */
+	const int relayErr = RelayInit();
+	if (relayErr) {
+		LOG_ERR("Relay init failed (%d)", relayErr);
 		return CHIP_ERROR_INCORRECT_STATE;
 	}
 

@@ -40,7 +40,7 @@ namespace app
 	namespace Clusters
 	{
 
-		namespace Groups
+		namespace OnOff
 		{
 
 			Protocols::InteractionModel::Status
@@ -51,62 +51,29 @@ namespace app
 				bool wasHandled = false;
 				{
 					switch (aCommandPath.mCommandId) {
-					case Commands::AddGroup::Id: {
-						Commands::AddGroup::DecodableType commandData;
-						TLVError = commandData.Decode(aDataTlv,
-									      apCommandObj->GetAccessingFabricIndex());
+					case Commands::Off::Id: {
+						Commands::Off::DecodableType commandData;
+						TLVError = DataModel::Decode(aDataTlv, commandData);
 						if (TLVError == CHIP_NO_ERROR) {
-							wasHandled = emberAfGroupsClusterAddGroupCallback(
+							wasHandled = emberAfOnOffClusterOffCallback(
 								apCommandObj, aCommandPath, commandData);
 						}
 						break;
 					}
-					case Commands::ViewGroup::Id: {
-						Commands::ViewGroup::DecodableType commandData;
-						TLVError = commandData.Decode(aDataTlv,
-									      apCommandObj->GetAccessingFabricIndex());
+					case Commands::On::Id: {
+						Commands::On::DecodableType commandData;
+						TLVError = DataModel::Decode(aDataTlv, commandData);
 						if (TLVError == CHIP_NO_ERROR) {
-							wasHandled = emberAfGroupsClusterViewGroupCallback(
+							wasHandled = emberAfOnOffClusterOnCallback(
 								apCommandObj, aCommandPath, commandData);
 						}
 						break;
 					}
-					case Commands::GetGroupMembership::Id: {
-						Commands::GetGroupMembership::DecodableType commandData;
-						TLVError = commandData.Decode(aDataTlv,
-									      apCommandObj->GetAccessingFabricIndex());
+					case Commands::Toggle::Id: {
+						Commands::Toggle::DecodableType commandData;
+						TLVError = DataModel::Decode(aDataTlv, commandData);
 						if (TLVError == CHIP_NO_ERROR) {
-							wasHandled = emberAfGroupsClusterGetGroupMembershipCallback(
-								apCommandObj, aCommandPath, commandData);
-						}
-						break;
-					}
-					case Commands::RemoveGroup::Id: {
-						Commands::RemoveGroup::DecodableType commandData;
-						TLVError = commandData.Decode(aDataTlv,
-									      apCommandObj->GetAccessingFabricIndex());
-						if (TLVError == CHIP_NO_ERROR) {
-							wasHandled = emberAfGroupsClusterRemoveGroupCallback(
-								apCommandObj, aCommandPath, commandData);
-						}
-						break;
-					}
-					case Commands::RemoveAllGroups::Id: {
-						Commands::RemoveAllGroups::DecodableType commandData;
-						TLVError = commandData.Decode(aDataTlv,
-									      apCommandObj->GetAccessingFabricIndex());
-						if (TLVError == CHIP_NO_ERROR) {
-							wasHandled = emberAfGroupsClusterRemoveAllGroupsCallback(
-								apCommandObj, aCommandPath, commandData);
-						}
-						break;
-					}
-					case Commands::AddGroupIfIdentifying::Id: {
-						Commands::AddGroupIfIdentifying::DecodableType commandData;
-						TLVError = commandData.Decode(aDataTlv,
-									      apCommandObj->GetAccessingFabricIndex());
-						if (TLVError == CHIP_NO_ERROR) {
-							wasHandled = emberAfGroupsClusterAddGroupIfIdentifyingCallback(
+							wasHandled = emberAfOnOffClusterToggleCallback(
 								apCommandObj, aCommandPath, commandData);
 						}
 						break;
@@ -134,7 +101,7 @@ namespace app
 				return Protocols::InteractionModel::Status::Success;
 			}
 
-		} // namespace Groups
+		} // namespace OnOff
 
 		namespace OtaSoftwareUpdateRequestor
 		{
@@ -236,8 +203,8 @@ namespace app
 		Protocols::InteractionModel::Status errorStatus = Protocols::InteractionModel::Status::Success;
 
 		switch (aCommandPath.mClusterId) {
-		case Clusters::Groups::Id:
-			errorStatus = Clusters::Groups::DispatchServerCommand(apCommandObj, aCommandPath, aReader);
+		case Clusters::OnOff::Id:
+			errorStatus = Clusters::OnOff::DispatchServerCommand(apCommandObj, aCommandPath, aReader);
 			break;
 		case Clusters::OtaSoftwareUpdateRequestor::Id:
 			errorStatus = Clusters::OtaSoftwareUpdateRequestor::DispatchServerCommand(

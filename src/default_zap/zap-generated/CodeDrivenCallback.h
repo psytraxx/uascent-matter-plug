@@ -31,10 +31,6 @@ void MatterDescriptorClusterInitCallback(chip::EndpointId endpointId);
 
 void MatterDescriptorClusterShutdownCallback(chip::EndpointId endpointId);
 
-void MatterBindingClusterInitCallback(chip::EndpointId endpointId);
-
-void MatterBindingClusterShutdownCallback(chip::EndpointId endpointId);
-
 void MatterAccessControlClusterInitCallback(chip::EndpointId endpointId);
 
 void MatterAccessControlClusterShutdownCallback(chip::EndpointId endpointId);
