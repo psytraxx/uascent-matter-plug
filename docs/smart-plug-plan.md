@@ -256,9 +256,12 @@ means it is dead weight — delete it too, or leave it excluded from the build.
 sample. Copy its `zcl_callbacks.cpp` pattern — `MatterPostAttributeChangeCallback`
 dispatching on `OnOff::Id` — rather than inventing a new one.
 
-**Product identity:** change `CONFIG_CHIP_DEVICE_PRODUCT_NAME` and
-`CONFIG_CHIP_DEVICE_PRODUCT_ID` in `prj.conf` away from the light-switch values, and
-`CONFIG_BT_DEVICE_NAME` from `"XIAOSwitch"`.
+**Product identity:** `CONFIG_CHIP_DEVICE_PRODUCT_NAME` → `"XIAO Smart Plug"` and
+`CONFIG_BT_DEVICE_NAME` → `"XIAOPlug"` are done. **`CONFIG_CHIP_DEVICE_PRODUCT_ID`
+is still `32772` (0x8004), the light-switch example's ID — left unchanged pending a
+decision** on whether this needs its own allocation. It only matters for a real
+Matter certification/distribution path; for bench use under the test vendor ID it is
+cosmetic. Revisit before this goes further than one prototype.
 
 ---
 
