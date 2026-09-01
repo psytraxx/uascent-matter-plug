@@ -60,6 +60,36 @@ nRF Connect SDK **v3.4.0** at `/home/eric/ncs`, toolchain `fbf7391cab`. Not on
 `PATH` — the scripts below set it up themselves. Override with `NCS_ROOT`,
 `NCS_VERSION`, `NCS_TOOLCHAIN` if your SDK is elsewhere.
 
+### Where the toolchain came from
+
+Nothing here is installed by the system package manager — there is **no
+`pacman`/`paru` package for any of it**, and none is needed. The SDK is a
+self-contained bundle downloaded and unpacked into `/home/eric/ncs`:
+
+```
+/home/eric/ncs/
+├── downloads/
+│   ├── ncs-toolchain-x86_64-linux-fbf7391cab.tar.gz   (~1.2 GB)
+│   └── sdk-nrf-bundle-v3.4.0.tar.gz                   (~3.1 GB)
+├── toolchains/fbf7391cab/    the toolchain: Zephyr SDK, arm-zephyr-eabi
+│                             GCC, CMake, Ninja, Python + west, nrfutil
+└── v3.4.0/                   the SDK sources: zephyr, nrf, modules
+                              (incl. modules/lib/matter)
+```
+
+Everything the build needs — `west`, `cmake`, `ninja`, the ARM compiler, the
+Python environment, `nrfutil` — lives inside `toolchains/fbf7391cab` and is
+reached only by the `PATH` that the scripts export. So `which west` on a
+fresh shell correctly reports nothing.
+
+The one system package involved is `jlink`, and this project does not use it:
+the XIAO has no on-board debug probe, so flashing goes over UF2 (see
+[Flashing](#flashing)).
+
+To reproduce on another machine, install the SDK the same way — the
+[nRF Connect for Desktop Toolchain Manager](https://www.nordicsemi.com/Products/Development-tools/nrf-connect-for-desktop)
+or `nrfutil sdk-manager`, picking v3.4.0 — then point `NCS_ROOT` at it.
+
 ## Usage
 
 ```sh
