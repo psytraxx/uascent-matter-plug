@@ -171,6 +171,29 @@ no serial port. Nothing the host sends can reset the board (the serial port is
 emulated by the chip itself, so there is no DTR-to-reset wire). Use the RESET
 button.
 
+## Continuous integration
+
+`.github/workflows/build.yml` builds the firmware on every push to `main`,
+every pull request, and on demand via *Run workflow*. It runs in Nordic's
+official toolchain image, which happens to ship the exact toolchain hash this
+project pins (`fbf7391cab`) under `/opt/ncs/toolchains/` — the same layout
+`scripts/env.sh` expects — so CI runs the same scripts you do, with only
+`NCS_ROOT=/opt/ncs` set differently.
+
+Two caches keep it quick, since a Matter build from cold is slow:
+
+* **The SDK** (~4.7 GB) is not in the image, so it is fetched with `west` and
+  cached against `NCS_VERSION`. It is refetched only when the version changes.
+* **ccache** carries compiled objects between runs. CI builds pristine every
+  time (`scripts/build.sh -p`), so the hit rate — not an incremental build
+  directory — is what makes a run fast. The cache is keyed per commit and
+  falls back to the branch, then `main`.
+
+Each run publishes `zephyr.uf2`, `zephyr.hex`, and the resolved `.config` as
+artifacts, and prints flash/RAM usage to the run summary. That last number is
+worth watching: flash sits around 83% full, and `CONFIG_LTO=y` is required to
+fit at all, so a change that pushes it over shows up as a failed link.
+
 ## Pairing
 
 Needs a Thread border router and a Matter controller (e.g. `chip-tool`).

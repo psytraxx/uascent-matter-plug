@@ -1,0 +1,139 @@
+# Firmware build for the Matter smart plug.
+#
+# Runs in Nordic's official toolchain image, which ships the exact toolchain
+# hash this project pins (fbf7391cab) at /opt/ncs/toolchains/ -- the same
+# layout scripts/env.sh expects locally, so the scripts run unmodified with
+# NCS_ROOT pointed at /opt/ncs.
+#
+# The image does NOT ship the SDK sources (~4.7 GB), so those are fetched
+# with west and cached. Compiles go through ccache, which the image also
+# ships and scripts/env.sh already puts on PATH.
+
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch makes an in-flight build obsolete. Don't
+# cancel on main: those runs populate the caches every PR builds against.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  NCS_VERSION: v3.4.0
+  NCS_TOOLCHAIN: fbf7391cab
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    container:
+      image: ghcr.io/nrfconnect/sdk-nrf-toolchain:v3.4.0
+      # The image sets HOME=/opt and activates the toolchain from
+      # /opt/toolchain-env.sh via BASH_ENV. Keep HOME so that still works,
+      # and so ccache/west find their config where the image expects.
+      options: --user root
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Check out the application
+        uses: actions/checkout@v4
+        with:
+          path: blink
+
+      # The SDK is the expensive part: ~4.7 GB of sources that change only
+      # when NCS_VERSION does, so it is keyed on the version alone.
+      - name: Restore the nRF Connect SDK
+        id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: /opt/ncs/${{ env.NCS_VERSION }}
+          key: ncs-sdk-${{ env.NCS_VERSION }}
+
+      - name: Fetch the nRF Connect SDK
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p /opt/ncs/"$NCS_VERSION"
+          cd /opt/ncs/"$NCS_VERSION"
+          west init -m https://github.com/nrfconnect/sdk-nrf --mr "$NCS_VERSION" .
+          # Matter and its submodules are the bulk of the tree. -o=--depth=1
+          # keeps the checkout shallow; the build never needs the history.
+          west update --narrow -o=--depth=1
+
+      # Keyed by commit so every run starts from the most recent cache, with
+      # the branch/base prefix as fallback. ccache is what keeps incremental
+      # builds short; a cold cache still works, just slower.
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: /opt/.ccache
+          key: ccache-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ github.ref_name }}-
+            ccache-main-
+            ccache-
+
+      - name: Configure ccache
+        run: |
+          export CCACHE_DIR=/opt/.ccache
+          # A full Matter build for this project occupies ~1.5 GB of cache,
+          # so 2G would start evicting mid-build and cost hits on the next run.
+          ccache --max-size=5G
+          # Absolute paths differ between the local checkout and the CI one;
+          # without this the hashes never match and the cache is useless.
+          ccache --set-config=hash_dir=false
+          ccache --set-config=compiler_check=content
+          ccache --zero-stats
+
+      - name: Build
+        env:
+          NCS_ROOT: /opt/ncs
+          CCACHE_DIR: /opt/.ccache
+        run: |
+          cd blink
+          # -p: CI always builds from scratch, so the ccache hit rate is the
+          # thing that makes this fast, not an incremental build directory.
+          # Tee the output so the memory report can be lifted into the job
+          # summary; pipefail keeps a build failure from being masked by tee.
+          set -o pipefail
+          scripts/build.sh -p 2>&1 | tee build-output.txt
+
+      - name: Report ccache statistics
+        if: always()
+        run: |
+          export CCACHE_DIR=/opt/.ccache
+          ccache --show-stats --verbose
+
+      - name: Summarize the build
+        if: always()
+        run: |
+          cd blink
+          {
+            echo '## Flash and RAM usage'
+            echo
+            echo '```'
+            # Flash is ~83% full and CONFIG_LTO=y is required to fit at all,
+            # so the memory report is the number worth surfacing per run.
+            sed -n '/Memory region/,/^[[:space:]]*$/p' build-output.txt |
+              grep -E 'Memory region|FLASH|RAM|IDT_LIST' ||
+              echo 'no memory report found'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the firmware
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ github.sha }}
+          path: |
+            blink/build/blink/zephyr/zephyr.uf2
+            blink/build/blink/zephyr/zephyr.hex
+            blink/build/blink/zephyr/.config
+          if-no-files-found: error
