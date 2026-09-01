@@ -97,6 +97,8 @@ This creates:
 ```
 ~/ncs/
 ├── downloads/                the tarballs it fetched
+│   ├── ncs-toolchain-x86_64-linux-<bundle-id>.tar.gz   (~1.2 GB)
+│   └── sdk-nrf-bundle-v3.4.0.tar.gz                    (~3.1 GB)
 ├── toolchains/<bundle-id>/   Zephyr SDK, arm-zephyr-eabi GCC, CMake, Ninja,
 │                             Python + west, nrfutil
 └── v3.4.0/                   SDK sources: zephyr, nrf, modules
