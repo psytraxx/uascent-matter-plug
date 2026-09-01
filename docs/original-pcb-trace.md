@@ -6,6 +6,26 @@ on. Source photos: `PXL_20260821_165630609.MACRO_FOCUS.jpg` (board back),
 `PXL_20260821_165652054.MACRO_FOCUS.jpg` (board front), `original_chip.png` /
 `original_chip_pins.png` (Uascent UAM023 module datasheet pages).
 
+## Donor device identity
+
+Carried over from a superseded repo (see "Provenance" at the end of this
+file). Not re-verified here, but recorded because the stock device's
+certification data is the concrete reference behind the still-open product
+identity decision in `docs/smart-plug-plan.md` (Product identity section).
+
+- **Product:** Uascent UA-SmartPlug (Matter Wi-Fi smart plug).
+- **Matter certification (stock firmware):** Vendor ID **0x1400**, Product ID
+  **0x03EA**, device type **0x010A** (On/Off Plug-in Unit), Spec 1.3,
+  transport Wi-Fi + BLE. Certified firmware v2.3, hardware v1.0.
+- **FCC ID:** **2A68EJX-UAM023** (Shenzhen Uascent Technology, filed 2023-03).
+  The FCC "Internal Photos" exhibit shows the de-shielded UAM023 module.
+- **Stock cloud endpoints:** the original firmware kept on/off local over
+  Matter but uploaded metering to the U-Home / Xthings cloud —
+  `api.u-tec.com` (API) and `oauth.u-tec.com` (auth), plus a presumed
+  MQTT/telemetry subdomain that was never identified. Cloud-only metering is
+  the thing this project replaces; these names are worth having when
+  confirming the finished plug makes no outbound connections.
+
 ## What's visually confirmed
 
 Board is silkscreened **WK38-V20**. Populated front side (from
@@ -125,10 +145,29 @@ in diode/continuity mode, not voltage checks on a live board.
 
 3. **Find BL0937 connections.** With GND established, probe each remaining
    header pad against each BL0937 pin (SOIC-8, pins 1–8) for continuity.
-   BL0937 pinout (standard part, for reference while probing):
-   pin1 VDD, pin2 CF1, pin3 CF, pin4 SEL, pin5 IN2N, pin6 IN2P, pin7 V1P,
-   pin8 GND. You're specifically looking for which header pad(s) hit CF,
-   CF1, and SEL (pins 2, 3, 4) — those are the ones the driver code needs.
+   You're looking for which header pad(s) hit **CF, CF1, and SEL** — those
+   three are the ones the driver code needs.
+
+   ⚠️ **The BL0937 pin numbering is UNVERIFIED — resolve it before probing.**
+   Two mutually incompatible orderings are on record, and neither was ever
+   traced to a datasheet page:
+
+   | | pin1 | pin2 | pin3 | pin4 | pin5 | pin6 | pin7 | pin8 |
+   |---|---|---|---|---|---|---|---|---|
+   | **A** (this file, previously) | VDD | CF1 | CF | SEL | IN2N | IN2P | V1P | GND |
+   | **B** (superseded repo) | VP | VDD | NC | IN | IP | CF1 | CF | SEL |
+
+   These are roughly a rotation of each other, so picking the wrong one
+   sends every continuity check to the wrong pins and the mistake will not
+   be obvious — the probe simply never beeps. **Open the BL0937 datasheet,
+   confirm the true pinout, record it here with its source, and delete the
+   losing row** before starting step 3. Do not proceed on either row as-is.
+
+   (Ordering B additionally claims only pins 6/7/8 leave for the module,
+   with the analog voltage-divider and shunt inputs on pins 1/4/5. That is a
+   useful cross-check once the numbering is settled: whichever ordering is
+   right, the three digital lines are the only ones that should ring out to
+   a header pad at all.)
 
 4. **Find the relay drive pin.** Probe each remaining header pad against the
    relay coil terminals (not the switched-contact terminals — check the
@@ -181,3 +220,21 @@ finding both.
 | H9 | | | |
 | H10 | | | |
 | H11 | | | |
+
+## Provenance — the superseded BK7231N approach
+
+An earlier attempt at this project took a different hardware route: keep the
+stock Uascent UAM023 module (a Beken BK7231N) and reflash it, rather than
+replacing it with the XIAO. That work lived in its own repo history and was
+discarded when this repo replaced it.
+
+It never produced working firmware — every driver was a stub — and it stalled
+on two unresolved blockers: confirming the SoC identity via a chip-ID
+handshake, and determining how tightly TuyaOS (the only route to Matter on a
+BK7231N) is gated behind Tuya's cloud provisioning. Swapping the Uascent
+cloud for the Tuya cloud would not have served the goal, so the module is
+being physically replaced instead.
+
+Its hardware documentation was independently re-derived in this file. The
+only things carried across are the "Donor device identity" section above and
+ordering **B** in the BL0937 pinout conflict in step 3 of the probing plan.
