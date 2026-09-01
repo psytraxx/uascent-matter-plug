@@ -60,6 +60,81 @@ nRF Connect SDK **v3.4.0** at `/home/eric/ncs`, toolchain `fbf7391cab`. Not on
 `PATH` — the scripts below set it up themselves. Override with `NCS_ROOT`,
 `NCS_VERSION`, `NCS_TOOLCHAIN` if your SDK is elsewhere.
 
+### Installing the toolchain
+
+There is **no distro package** for any of this — not in `pacman`/`paru`, not
+in AUR. Nordic ships the SDK and its toolchain as bundles you install with
+their own tool, `nrfutil`. The whole thing lands in one directory (`~/ncs` by
+default) and touches nothing else on the system.
+
+**1. Get `nrfutil`.** A single static binary:
+
+```sh
+mkdir -p ~/.local/bin
+curl -L https://files.nordicsemi.com/artifactory/swtools/external/nrfutil/x86_64-unknown-linux-gnu/nrfutil \
+  -o ~/.local/bin/nrfutil
+chmod +x ~/.local/bin/nrfutil
+```
+
+Make sure `~/.local/bin` is on your `PATH`.
+
+**2. Add the SDK manager command.** `nrfutil` is a shell; its features are
+installed as subcommands:
+
+```sh
+nrfutil install sdk-manager
+```
+
+**3. Download and install the SDK + toolchain.** One command fetches both
+(about 4.3 GB of downloads, ~10 GB installed):
+
+```sh
+nrfutil sdk-manager install v3.4.0
+```
+
+This creates:
+
+```
+~/ncs/
+├── downloads/                the tarballs it fetched
+├── toolchains/<bundle-id>/   Zephyr SDK, arm-zephyr-eabi GCC, CMake, Ninja,
+│                             Python + west, nrfutil
+└── v3.4.0/                   SDK sources: zephyr, nrf, modules
+                              (incl. modules/lib/matter)
+```
+
+Use `--install-dir <path>` to put it elsewhere.
+
+**4. Note the toolchain bundle ID.** `sdk-manager` names the toolchain
+directory after a bundle hash — this project was built against `fbf7391cab`,
+but a fresh install may differ. Check it:
+
+```sh
+nrfutil sdk-manager list
+ls ~/ncs/toolchains/
+```
+
+If yours differs, tell the build scripts:
+
+```sh
+export NCS_TOOLCHAIN=<your-bundle-id>
+```
+
+`NCS_ROOT` (default `~/ncs`) and `NCS_VERSION` (default `v3.4.0`) work the
+same way. See [scripts/env.sh](scripts/env.sh).
+
+**Nothing goes on your `PATH`.** `west`, `cmake`, `ninja` and the ARM compiler
+live inside `~/ncs/toolchains/<bundle-id>/` and are reached only by the
+environment the scripts export — so `which west` in a fresh shell correctly
+reports nothing. That is expected; run builds through `scripts/build.sh`.
+
+Nordic also offers a GUI installer, [nRF Connect for
+Desktop](https://www.nordicsemi.com/Products/Development-tools/nrf-connect-for-desktop),
+whose Toolchain Manager does the same thing.
+
+**J-Link is not needed.** The XIAO has no on-board debug probe; flashing goes
+over UF2 drag-and-drop (see [Flashing](#flashing)).
+
 ## Usage
 
 ```sh
