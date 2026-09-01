@@ -86,10 +86,18 @@ jobs:
           # A full Matter build for this project occupies ~1.5 GB of cache,
           # so 2G would start evicting mid-build and cost hits on the next run.
           ccache --max-size=5G
-          # Absolute paths differ between the local checkout and the CI one;
-          # without this the hashes never match and the cache is useless.
           ccache --set-config=hash_dir=false
           ccache --set-config=compiler_check=content
+          # Every compile carries -g plus ~80 absolute SDK paths, and with -g
+          # ccache hashes those paths into the result -- hash_dir alone does
+          # not cover them. base_dir makes them relative before hashing, so a
+          # cache entry survives the workspace or SDK moving (a repo rename
+          # did exactly that here). / is deliberate: the checkout (/__w/...)
+          # and the SDK (/opt/ncs) share no closer ancestor.
+          ccache --set-config=base_dir=/
+          # Required for base_dir to rewrite paths in the direct mode, and to
+          # stop a fresh checkout's mtimes from invalidating every include.
+          ccache --set-config=sloppiness=include_file_ctime,include_file_mtime,time_macros,locale,system_headers
           ccache --zero-stats
 
       - name: Build
@@ -110,6 +118,15 @@ jobs:
         run: |
           export CCACHE_DIR=/opt/.ccache
           ccache --show-stats --verbose
+          # Surface the hit rate in the summary: a run that restored a cache
+          # but hits ~0% is caching nothing and just paying the transfer.
+          {
+            echo '## ccache'
+            echo
+            echo '```'
+            ccache --show-stats | grep -E 'Cacheable calls|Hits:|Misses:|Cache size' || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Summarize the build
         if: always()
