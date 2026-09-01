@@ -1,4 +1,4 @@
-# blink
+# uascent-matter-plug
 
 Firmware turning a **Seeed XIAO nRF52840 Sense** into a **Matter smart plug**.
 
@@ -60,35 +60,82 @@ nRF Connect SDK **v3.4.0** at `/home/eric/ncs`, toolchain `fbf7391cab`. Not on
 `PATH` — the scripts below set it up themselves. Override with `NCS_ROOT`,
 `NCS_VERSION`, `NCS_TOOLCHAIN` if your SDK is elsewhere.
 
-### Where the toolchain came from
+### Installing the toolchain
 
-Nothing here is installed by the system package manager — there is **no
-`pacman`/`paru` package for any of it**, and none is needed. The SDK is a
-self-contained bundle downloaded and unpacked into `/home/eric/ncs`:
+There is **no distro package** for any of this — not in `pacman`/`paru`, not
+in AUR. Nordic ships the SDK and its toolchain as bundles you install with
+their own tool, `nrfutil`. The whole thing lands in one directory (`~/ncs` by
+default) and touches nothing else on the system.
+
+**1. Get `nrfutil`.** A single static binary:
+
+```sh
+mkdir -p ~/.local/bin
+curl -L https://files.nordicsemi.com/artifactory/swtools/external/nrfutil/x86_64-unknown-linux-gnu/nrfutil \
+  -o ~/.local/bin/nrfutil
+chmod +x ~/.local/bin/nrfutil
+```
+
+Make sure `~/.local/bin` is on your `PATH`.
+
+**2. Add the SDK manager command.** `nrfutil` is a shell; its features are
+installed as subcommands:
+
+```sh
+nrfutil install sdk-manager
+```
+
+**3. Download and install the SDK + toolchain.** One command fetches both
+(about 4.3 GB of downloads, ~10 GB installed):
+
+```sh
+nrfutil sdk-manager install v3.4.0
+```
+
+This creates:
 
 ```
-/home/eric/ncs/
-├── downloads/
-│   ├── ncs-toolchain-x86_64-linux-fbf7391cab.tar.gz   (~1.2 GB)
-│   └── sdk-nrf-bundle-v3.4.0.tar.gz                   (~3.1 GB)
-├── toolchains/fbf7391cab/    the toolchain: Zephyr SDK, arm-zephyr-eabi
-│                             GCC, CMake, Ninja, Python + west, nrfutil
-└── v3.4.0/                   the SDK sources: zephyr, nrf, modules
+~/ncs/
+├── downloads/                the tarballs it fetched
+│   ├── ncs-toolchain-x86_64-linux-<bundle-id>.tar.gz   (~1.2 GB)
+│   └── sdk-nrf-bundle-v3.4.0.tar.gz                    (~3.1 GB)
+├── toolchains/<bundle-id>/   Zephyr SDK, arm-zephyr-eabi GCC, CMake, Ninja,
+│                             Python + west, nrfutil
+└── v3.4.0/                   SDK sources: zephyr, nrf, modules
                               (incl. modules/lib/matter)
 ```
 
-Everything the build needs — `west`, `cmake`, `ninja`, the ARM compiler, the
-Python environment, `nrfutil` — lives inside `toolchains/fbf7391cab` and is
-reached only by the `PATH` that the scripts export. So `which west` on a
-fresh shell correctly reports nothing.
+Use `--install-dir <path>` to put it elsewhere.
 
-The one system package involved is `jlink`, and this project does not use it:
-the XIAO has no on-board debug probe, so flashing goes over UF2 (see
-[Flashing](#flashing)).
+**4. Note the toolchain bundle ID.** `sdk-manager` names the toolchain
+directory after a bundle hash — this project was built against `fbf7391cab`,
+but a fresh install may differ. Check it:
 
-To reproduce on another machine, install the SDK the same way — the
-[nRF Connect for Desktop Toolchain Manager](https://www.nordicsemi.com/Products/Development-tools/nrf-connect-for-desktop)
-or `nrfutil sdk-manager`, picking v3.4.0 — then point `NCS_ROOT` at it.
+```sh
+nrfutil sdk-manager list
+ls ~/ncs/toolchains/
+```
+
+If yours differs, tell the build scripts:
+
+```sh
+export NCS_TOOLCHAIN=<your-bundle-id>
+```
+
+`NCS_ROOT` (default `~/ncs`) and `NCS_VERSION` (default `v3.4.0`) work the
+same way. See [scripts/env.sh](scripts/env.sh).
+
+**Nothing goes on your `PATH`.** `west`, `cmake`, `ninja` and the ARM compiler
+live inside `~/ncs/toolchains/<bundle-id>/` and are reached only by the
+environment the scripts export — so `which west` in a fresh shell correctly
+reports nothing. That is expected; run builds through `scripts/build.sh`.
+
+Nordic also offers a GUI installer, [nRF Connect for
+Desktop](https://www.nordicsemi.com/Products/Development-tools/nrf-connect-for-desktop),
+whose Toolchain Manager does the same thing.
+
+**J-Link is not needed.** The XIAO has no on-board debug probe; flashing goes
+over UF2 drag-and-drop (see [Flashing](#flashing)).
 
 ## Usage
 
@@ -111,7 +158,7 @@ No debug probe on this board, so `west flash` does not work. Flashing is
 drag-and-drop:
 
 1. Double-tap RESET. The board appears as a USB drive named `XIAO-SENSE`.
-2. Copy `build/blink/zephyr/zephyr.uf2` onto it.
+2. Copy `build/uascent-matter-plug/zephyr/zephyr.uf2` onto it.
 3. It reboots into the new firmware.
 
 `scripts/flash.sh` does this for you and waits for the drive.
@@ -125,6 +172,29 @@ The console only exists while the firmware runs — in bootloader mode there is
 no serial port. Nothing the host sends can reset the board (the serial port is
 emulated by the chip itself, so there is no DTR-to-reset wire). Use the RESET
 button.
+
+## Continuous integration
+
+`.github/workflows/build.yml` builds the firmware on every push to `main`,
+every pull request, and on demand via *Run workflow*. It runs in Nordic's
+official toolchain image, which happens to ship the exact toolchain hash this
+project pins (`fbf7391cab`) under `/opt/ncs/toolchains/` — the same layout
+`scripts/env.sh` expects — so CI runs the same scripts you do, with only
+`NCS_ROOT=/opt/ncs` set differently.
+
+Two caches keep it quick, since a Matter build from cold is slow:
+
+* **The SDK** (~4.7 GB) is not in the image, so it is fetched with `west` and
+  cached against `NCS_VERSION`. It is refetched only when the version changes.
+* **ccache** carries compiled objects between runs. CI builds pristine every
+  time (`scripts/build.sh -p`), so the hit rate — not an incremental build
+  directory — is what makes a run fast. The cache is keyed per commit and
+  falls back to the branch, then `main`.
+
+Each run publishes `zephyr.uf2`, `zephyr.hex`, and the resolved `.config` as
+artifacts, and prints flash/RAM usage to the run summary. That last number is
+worth watching: flash sits around 83% full, and `CONFIG_LTO=y` is required to
+fit at all, so a change that pushes it over shows up as a failed link.
 
 ## Pairing
 

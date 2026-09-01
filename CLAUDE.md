@@ -1,4 +1,4 @@
-# blink
+# uascent-matter-plug
 
 XIAO nRF52840 **Sense** firmware on the nRF Connect SDK (Zephyr).
 This is a west/CMake project; do not add `platformio.ini` or Arduino sources.
@@ -45,8 +45,9 @@ enumerates as `Zephyr_Project_CDC_ACM_serial_backend`, not under Seeed's VID.
 LEDs are active-low on `led0` = red, `led1` = green, `led2` = blue.
 
 The board has **no on-board debug probe**, so `west flash` does not work.
-Flash by double-tapping RESET and copying `build/blink/zephyr/zephyr.uf2` to
-the mass-storage drive that appears. The app partition starts at `0x27000`
+Flash by double-tapping RESET and copying
+`build/uascent-matter-plug/zephyr/zephyr.uf2` to the mass-storage drive that
+appears. The app partition starts at `0x27000`
 (the Adafruit UF2 bootloader's entry point) and is `0xC5000` (788 KB).
 
 Console is USB CDC-ACM, supplied by the board devicetree via
