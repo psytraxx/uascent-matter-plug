@@ -1,4 +1,4 @@
-# blink
+# uascent-matter-plug
 
 Firmware turning a **Seeed XIAO nRF52840 Sense** into a **Matter smart plug**.
 
@@ -158,7 +158,7 @@ No debug probe on this board, so `west flash` does not work. Flashing is
 drag-and-drop:
 
 1. Double-tap RESET. The board appears as a USB drive named `XIAO-SENSE`.
-2. Copy `build/blink/zephyr/zephyr.uf2` onto it.
+2. Copy `build/uascent-matter-plug/zephyr/zephyr.uf2` onto it.
 3. It reboots into the new firmware.
 
 `scripts/flash.sh` does this for you and waits for the drive.

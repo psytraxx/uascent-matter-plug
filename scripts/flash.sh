@@ -1,7 +1,7 @@
 #!/bin/sh
 # Flash the firmware over the Adafruit UF2 bootloader.
 #
-#   scripts/flash.sh           flash build/blink/zephyr/zephyr.uf2
+#   scripts/flash.sh           flash build/uascent-matter-plug/zephyr/zephyr.uf2
 #   scripts/flash.sh -b        build first, then flash
 #
 # The board has no on-board debug probe, so `west flash` does not work: the
@@ -14,7 +14,7 @@ case "$1" in
 	-b|--build) scripts/build.sh || exit 1; shift ;;
 esac
 
-UF2=build/blink/zephyr/zephyr.uf2
+UF2=build/uascent-matter-plug/zephyr/zephyr.uf2
 
 if [ ! -f "$UF2" ]; then
 	echo "error: $UF2 not found -- run scripts/build.sh first" >&2

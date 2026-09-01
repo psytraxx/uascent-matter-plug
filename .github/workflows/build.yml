@@ -46,7 +46,7 @@ jobs:
       - name: Check out the application
         uses: actions/checkout@v4
         with:
-          path: blink
+          path: uascent-matter-plug
 
       # The SDK is the expensive part: ~4.7 GB of sources that change only
       # when NCS_VERSION does, so it is keyed on the version alone.
@@ -97,7 +97,7 @@ jobs:
           NCS_ROOT: /opt/ncs
           CCACHE_DIR: /opt/.ccache
         run: |
-          cd blink
+          cd uascent-matter-plug
           # -p: CI always builds from scratch, so the ccache hit rate is the
           # thing that makes this fast, not an incremental build directory.
           # Tee the output so the memory report can be lifted into the job
@@ -114,7 +114,7 @@ jobs:
       - name: Summarize the build
         if: always()
         run: |
-          cd blink
+          cd uascent-matter-plug
           {
             echo '## Flash and RAM usage'
             echo
@@ -133,7 +133,7 @@ jobs:
         with:
           name: firmware-${{ github.sha }}
           path: |
-            blink/build/blink/zephyr/zephyr.uf2
-            blink/build/blink/zephyr/zephyr.hex
-            blink/build/blink/zephyr/.config
+            uascent-matter-plug/build/uascent-matter-plug/zephyr/zephyr.uf2
+            uascent-matter-plug/build/uascent-matter-plug/zephyr/zephyr.hex
+            uascent-matter-plug/build/uascent-matter-plug/zephyr/.config
           if-no-files-found: error
