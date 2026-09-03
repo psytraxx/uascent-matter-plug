@@ -115,12 +115,17 @@ re-truncate the onboarding block. Prefer levers 1–3.
 
 **Not started until the firmware is proven on the bench.** When it is:
 
-Fill in the worksheet (`BL0937` pins 6/7/8 = CF1/CF/SEL) with a multimeter, board
+Fill in the worksheet (`BL0937` pins 6/7/8 = CF/CF1/SEL, confirmed from the
+datasheet — see `docs/original-pcb-trace.md`) with a multimeter, board
 unplugged and caps discharged. Beyond CF/CF1/SEL, also trace **relay driver**,
 **button**, and **both LED** nets independently (the board has two indicator
 LEDs, not one — see **Indication design** in Phase 2), and confirm each LED's
 polarity (likely active-low, but may not match between the two). See
 `docs/original-pcb-trace.md` for the board-level notes and probing plan.
+
+First probe batch already done: button on module pin RX1, CF/CF1/SEL on
+module pins P24/P26/P8 respectively. Still needed: 3.3V/GND, relay driver,
+and both LEDs.
 
 Shortcut worth trying first: if the plug is a known Uascent/WK38-V20 variant, the
 OpenBeken template database (`openbekeniot.github.io/webapp/devicesList.html`) may
