@@ -1,8 +1,13 @@
 /*
  * Board wiring for the BL0937 mains-plug retrofit. See docs/smart-plug-plan.md
- * for the full design; pin choices here are PROVISIONAL until the plug's PCB
- * is traced (docs/plug-pinout.md) -- only this file should need to change
- * once that trace confirms or corrects the assignment.
+ * for the full design.
+ *
+ * The plug's 11-pad header has been traced (docs/original-pcb-trace.md) --
+ * every signal below is CONFIRMED except the relay, whose header pad is
+ * still one of H8/H10. Note the trace fixes which *header pad* carries each
+ * signal, not which XIAO pin it lands on: the XIAO is wired to that header
+ * by hand, so the pin choices below are ours to make, and are chosen for
+ * XIAO-side capability (ADC availability, edge-connector access).
  *
  * Board target: xiao_ble (plain, no IMU/microphone) -- confirmed by physical
  * inspection, no LSM6DSL/microphone package on the board. The plain and
@@ -15,34 +20,44 @@
  * and cross-checked against
  * zephyr/boards/seeed/xiao_ble/seeed_xiao_connector.dtsi:
  *
- *   D0 / P0.02  - plug tactile switch (short = toggle relay, long = factory
- *                 reset; handled by the Matter common board layer's function
- *                 button, see samples/matter/common/src/board/board.cpp)
- *   D1 / P0.03  - plug LED 2 (network/commissioning state indicator)
- *   D2 / P0.28  - BL0937 CF  (active-power pulse), ADC-capable pad kept in
- *                 reserve in case pulse counting needs an analog fallback
- *   D3 / P0.29  - BL0937 CF1 (V/I pulse, muxed by SEL), same ADC reasoning
- *   D4 / P0.04  - BL0937 SEL (V/I select output)
- *   D6 / P1.11  - relay drive (digital-only pad; the relay needs no ADC)
- *   P0.17       - plug LED 1 (relay state indicator). This pin is wired on
- *                 the XIAO module as CHARGE_LED but is NOT declared in the
- *                 board devicetree and NOT on the edge connector -- it
- *                 drives the module's own (unpopulated-in-this-design)
- *                 battery charge LED and is otherwise idle on a mains plug
- *                 with no battery. Reusing it here frees a connector pad.
+ *   XIAO pin      Header pad        Signal
+ *   ------------  ----------------  ---------------------------------------
+ *   D0 / P0.02    H5  (RX1)         plug tactile switch (short = toggle
+ *                                   relay, long = factory reset; handled by
+ *                                   the Matter common board layer's function
+ *                                   button, see
+ *                                   samples/matter/common/src/board/board.cpp)
+ *   D1 / P0.03    H4  (P7)          plug LED 2 (network/commissioning state)
+ *   D2 / P0.28    H9  (P24)         BL0937 CF  (active-power pulse),
+ *                                   ADC-capable pad kept in reserve in case
+ *                                   pulse counting needs an analog fallback
+ *   D3 / P0.29    H11 (P26)         BL0937 CF1 (V/I pulse, muxed by SEL),
+ *                                   same ADC reasoning
+ *   D4 / P0.04    H6  (P8)          BL0937 SEL (V/I select output)
+ *   D5 / P0.05    H2  (P6)          plug LED 1 (relay state indicator)
+ *   D6 / P1.11    H8 or H10 (TBD)   relay drive (digital-only pad; the relay
+ *                                   needs no ADC)
+ *
+ * Power: the plug's H1 (3.3V) and H3 (GND) tie to the XIAO's 3.3V-OUT and
+ * GND pads. H7 (TX1) is a no-connect on the host board. Of H8 (ADC) and H10
+ * (CEN), one carries the relay drive and the other is unused -- see
+ * docs/original-pcb-trace.md.
  *
  * The plug has two LEDs, not one -- see docs/original-pcb-trace.md. LED 1
- * (P0.17) mirrors relay state; LED 2 (D1) mirrors network/commissioning
+ * (D5) mirrors relay state; LED 2 (D1) mirrors network/commissioning
  * state. Splitting the two facts across separate LEDs avoids a precedence
  * conflict on a single shared LED. See "Indication design" in
  * docs/smart-plug-plan.md.
  *
  * Both LEDs' polarity is assumed active-low, matching the on-board RGB LED
- * (xiao_ble_common.dtsi); confirm independently during tracing -- they may
- * not share polarity.
+ * (xiao_ble_common.dtsi); confirm independently -- they may not share
+ * polarity.
  *
- * D5/D7-D10 are deliberately left unused as spares (D4/D5 are the I2C
- * pair, D6/D7 the UART pair -- avoided for a possible future sensor).
+ * All seven signals sit on the edge connector, so every joint is solderable
+ * and inspectable. An earlier revision put LED 1 on P0.17 (the module's
+ * internal CHARGE_LED pin) to save a connector pad; with only seven signals
+ * against eleven pads there is no pad pressure, so that underside solder
+ * joint was not worth its cost. D7-D10 remain free as spares.
  *
  * All GPIO producer/consumer nodes below reuse Zephyr's "gpio-leds" /
  * "gpio-keys" bindings even where the node is not literally an LED or a key
@@ -64,7 +79,7 @@
 
 		button0: button_0 {
 			gpios = <&gpio0 2 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
-			label = "Plug switch (D0)";
+			label = "Plug switch (D0 <- H5)";
 		};
 	};
 
@@ -92,8 +107,8 @@
 		compatible = "gpio-leds";
 
 		plug_led_relay: plug_led_relay {
-			gpios = <&gpio0 17 GPIO_ACTIVE_LOW>;
-			label = "Plug LED 1 (relay state)";
+			gpios = <&gpio0 5 GPIO_ACTIVE_LOW>;
+			label = "Plug LED 1 (relay state, D5)";
 		};
 
 		plug_led_network: plug_led_network {

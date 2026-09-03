@@ -85,43 +85,61 @@ The module's card-edge connector is two rows: TOP face silkscreened
 CF = active-power pulse output, CF1 = V/I pulse output (muxed by SEL), SEL =
 V/I channel select.
 
-## Probing plan
+## Header pad mapping
 
-Goal: map each of the 11 host-header pads to (a) UAM023 pin function, and
-(b) what it connects to on the host board (BL0937 pin, relay driver,
-button, LED, or 3.3V/GND).
-
-**Safety:** do this fully USB/mains disconnected. The board should have no
-power applied — continuity/resistance checks only, multimeter in
-diode/continuity mode, not voltage checks on a live board.
-
-Remaining steps:
-
-1. **3.3V and GND** — probe each header pad against the AMS1117 output leg
-   and against a known ground point (e.g. relay mounting tab, MOV ground
-   path).
-2. **Relay drive** — probe remaining header pads against the relay coil
-   terminals or driver-transistor base near the relay.
-3. **Both LEDs** — trace each LED's non-power leg (via its series resistor)
-   back to a header pad independently; don't assume they land on adjacent
-   pads. Confirm polarity for each independently — they may not match.
-
-## Results
-
-First batch, from continuity probing.
+Measured by continuity probing, board fully USB/mains disconnected.
 
 | Header pad | UAM023 pin | Connects to (host side) | Function |
 |---|---|---|---|
 | H1 | 3.3V | AMS1117 output | Power in |
-| H3 | GND | Ground pour | Ground |
-| H5 | RX1 | Tactile button | Button input |
-| H7 | TX1 | *(not connected)* | No-connect |
-| H9 | P24 | BL0937 pin 6 | CF (active-power pulse) |
-| H11 | P26 | BL0937 pin 7 | CF1 (V/I pulse, muxed by SEL) |
-| H6 | P8 | BL0937 pin 8 | SEL (V/I select) |
 | H2 | P6 | LED 1 | Status LED 1 |
-| H4 | | | |
-| H8 | | | |
-| H10 | | | |
+| H3 | GND | Ground pour | Ground |
+| H4 | P7 | LED 2 | Status LED 2 |
+| H5 | RX1 | Tactile button | Button input |
+| H6 | P8 | BL0937 pin 8 | SEL (V/I select) |
+| H7 | TX1 | *(not connected)* | No-connect |
+| H8 | ADC | ? | Unprobed — relay candidate |
+| H9 | P24 | BL0937 pin 6 | CF (active-power pulse) |
+| H10 | CEN | ? | Unprobed — module reset |
+| H11 | P26 | BL0937 pin 7 | CF1 (V/I pulse, muxed by SEL) |
 
-Still to probe: relay driver, LED 2, and polarity for both LEDs.
+### Still to determine
+
+**Relay drive.** Must be H8 (ADC/GPIO23) or H10 (CEN) by elimination, since
+every other pad is assigned. H8 is the strong favourite — CEN is the module's
+reset input, and P23 is documented as usable as a plain GPIO on BK7231N
+boards (one published variant runs button on P23).
+
+A GPIO cannot drive a relay coil directly, so expect a driver stage: look for
+a small SOT-23 transistor near the coil, with a flyback diode alongside.
+Probe H8 against that transistor's **base**, in resistance mode — a base
+resistor (1k-10k) sits in series, so this reads as resistance, not a
+continuity beep. If H8 reads open, check H10, and confirm whether H10 ties to
+a pull-up near the header (which would mark it a genuine reset line).
+
+**LED polarity.** Confirm for LED 1 and LED 2 independently — they may not
+match each other.
+
+**SEL polarity.** Which SEL level routes voltage vs. current onto CF1. The
+driver needs this.
+
+### No published template matches this board
+
+Searched the OpenBeken/Elektroda template corpus (Sept 2026). Every
+BK7231N/BL0937 plug template found conflicts with the measurements above:
+
+| Signal | This board | Antela UK 13A | RMC021 / LSC |
+|---|---|---|---|
+| CF | P24 | P7 | P7 |
+| CF1 | P26 | P6 | P6 |
+| SEL | P8 | P8 | P24 |
+| Button | RX1 (P10) | P26 | P10 |
+| Relay | ? | P24 | P26 |
+
+No published mapping puts CF on P24 *and* CF1 on P26, and all of them spend
+P24 or P26 on the relay — pins this board has already committed to metering.
+Uascent is not a Tuya-template vendor (it ships its own module and firmware,
+and uses its own flash coeff key), so no community template applies. The only
+primary source is the FCC filing (2A68EJX-UAM023), whose internal photos show
+the de-shielded module, not the host-board copper. **Don't re-search this —
+the relay pin has to be traced with a meter.**
