@@ -13,6 +13,44 @@ config STATE_LEDS
 	  the device into a network or the factory reset initiation. Note that setting this option to
 	  'n' does not disable the LED indicating the state of the simulated bolt.
 
+config APP_OVERPOWER_PROTECTION
+	bool "Open the relay on sustained over-power"
+	default y
+	help
+	  Opens the relay when measured active power stays above
+	  APP_OVERPOWER_THRESHOLD_MW for several consecutive samples. The stock
+	  Uascent firmware did the same (see docs/original-firmware.md); it is the
+	  one protective behaviour that has to be local, since waiting for a
+	  controller to notice an overload is the wrong architecture.
+
+	  The trip is only as trustworthy as the BL0937 calibration behind it, so
+	  confirm readings against a reference meter before relying on this.
+
+config APP_OVERPOWER_THRESHOLD_MW
+	int "Over-power trip threshold (mW)"
+	depends on APP_OVERPOWER_PROTECTION
+	default 2400000
+	help
+	  Active power above which the relay opens, in milliwatts.
+
+	  SET THIS TO MATCH YOUR PLUG. The default of 2400 W suits a 10 A/230 V
+	  plug; a 16 A plug wants roughly 3700 W, and leaving it at 2400 W there
+	  would trip on a legitimate 3 kW load. The donor board carries no legible
+	  current rating, so take the figure from the plug housing.
+
+	  A trip needs APP_OVERPOWER_SAMPLES consecutive breaches, so brief
+	  inrush cannot reach it and the threshold can sit close to the rating.
+
+config APP_OVERPOWER_SAMPLES
+	int "Consecutive over-threshold samples before tripping"
+	depends on APP_OVERPOWER_PROTECTION
+	default 5
+	help
+	  Samples are taken once per second. The stock firmware required more
+	  than four, i.e. five, which is long enough that motor and power-supply
+	  inrush cannot nuisance-trip while still reacting quickly to a real
+	  fault.
+
 # Sample configuration used for Thread networking
 if OPENTHREAD
 

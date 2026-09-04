@@ -16,7 +16,7 @@ Recommendation summary:
 
 | Feature | Recommendation |
 |---|---|
-| Over-power protection | **Implement** — safety, must be local |
+| Over-power protection | **Done** — implemented, see below |
 | Attribute-report deadbands | **Done** — implemented, see below |
 | Inching (auto-off) | Defer — no clean Matter surface |
 | Energy budget ("saving mode") | Skip — controller's job |
@@ -24,11 +24,11 @@ Recommendation summary:
 
 ---
 
-## 1. Over-power protection — recommend implementing
+## 1. Over-power protection — implemented
 
-The only feature here that genuinely must be local. A 10 A relay welded shut
-by a sustained overload is a fire risk, and waiting for a controller to notice
-is the wrong architecture.
+The only feature here that genuinely must be local. A relay welded shut by a
+sustained overload is a fire risk, and waiting for a controller to notice is
+the wrong architecture.
 
 **How the original did it.** Each 1 s tick compared the *raw* per-second power
 sample — before the median filter — against a threshold, and required **more
@@ -36,20 +36,30 @@ than four consecutive breaches** before acting, then forced the relay off. The
 debounce is what makes it safe to set the threshold near the rating: motor and
 PSU inrush lasts well under 5 s, so it cannot nuisance-trip.
 
-**Proposed implementation.**
+**Implemented** as `CheckOverPower()` in `src/bl0937.cpp`, called on the raw
+counts-per-second sample before the median filter — the original's placement,
+and the right one, since the median deliberately lags three seconds and
+protection should not.
 
-- Check the raw counts-per-second sample in `MeterPoll()`, before
-  `sCfFilter.Push()`, mirroring the original's placement.
-- Trip after 5 consecutive samples over threshold (>4, as the original).
-- Default threshold **2400 W** — just above this plug's 10 A / ~2300 W
-  ceiling. Make it a Kconfig, not an NV key, until there is a reason to
-  change it at runtime.
-- On trip: force the relay off, latch, and log at `LOG_ERR`.
-- **Clearing the latch** is the design decision the original left vague. It
-  stored a `pretect action` byte, implying a configurable response, but the
-  path we recovered simply turns the relay off. Proposed: the latch clears on
-  an explicit On command or a button press, never automatically — an
-  auto-clearing overload trip just re-energises a fault.
+Configured by three Kconfig options: `APP_OVERPOWER_PROTECTION` (default y),
+`APP_OVERPOWER_THRESHOLD_MW` (default 2400000) and `APP_OVERPOWER_SAMPLES`
+(default 5, matching the original's "more than four").
+
+> **Set the threshold to match your plug.** 2400 W suits a 10 A/230 V plug; a
+> 16 A plug wants roughly 3700 W, and leaving the default there would trip on
+> a legitimate 3 kW load. The donor board carries no legible current rating —
+> take the figure from the plug housing.
+
+A trip calls `RelaySet(false)` and `AppTask::UpdateClusterState()`, the same
+pair the button path uses, so the relay, the plug LED and the OnOff attribute
+cannot disagree.
+
+**No latch**, which is a deliberate departure from the proposal above. The
+original simply opened the relay, and re-arming on the next sample has the
+better failure mode: a persistent overload trips again after five seconds,
+whereas a latch can leave the plug stuck off with no obvious way to clear it.
+The cost is that a controller automation which blindly re-enables the plug
+could cycle the relay; a latch is the answer if that ever shows up.
 
 **Matter surfacing.** There is no standard cluster for an overload trip in
 Matter 1.3. The controller sees `OnOff` go false, which is honest but
@@ -142,4 +152,5 @@ it on the plug.
 1. Mains bring-up and calibration check (already Phase 3 in the plan) —
    everything else depends on the power reading being trustworthy.
 2. ~~Attribute-report deadbands~~ — done.
-3. Over-power protection — once the calibration is confirmed.
+3. ~~Over-power protection~~ — done, but **confirm the calibration before
+   trusting it**: a trip threshold is only as good as the readings behind it.

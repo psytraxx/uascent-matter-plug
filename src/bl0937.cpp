@@ -19,6 +19,10 @@
 #include "bl0937.h"
 
 #include "power_measurement.h"
+#ifdef CONFIG_APP_OVERPOWER_PROTECTION
+#include "app_task.h"
+#include "relay.h"
+#endif
 
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
@@ -119,6 +123,51 @@ private:
 MedianFilter sCfFilter;
 MedianFilter sCf1Filter;
 
+#ifdef CONFIG_APP_OVERPOWER_PROTECTION
+/* Consecutive samples seen above the trip threshold. Reset by any sample at or
+ * below it, so only a *sustained* overload counts. */
+uint32_t sOverPowerSamples;
+
+/* Checked against the raw per-second sample rather than the median, matching
+ * where the stock firmware placed it: the median deliberately lags by three
+ * seconds, and protection should not.
+ *
+ * There is no latch. A trip opens the relay and nothing more, so turning the
+ * plug back on is allowed and simply re-arms the check -- a persistent
+ * overload trips again after APP_OVERPOWER_SAMPLES seconds. That matches the
+ * stock firmware, and avoids a latch's own failure mode of leaving the plug
+ * stuck off with no obvious way to clear it. The cost is that a controller
+ * automation which blindly re-enables the plug could cycle the relay; a latch
+ * would be the answer if that ever shows up in practice. */
+void CheckOverPower(int64_t instantPowerMw)
+{
+	if (instantPowerMw <= CONFIG_APP_OVERPOWER_THRESHOLD_MW) {
+		sOverPowerSamples = 0;
+		return;
+	}
+
+	if (++sOverPowerSamples < CONFIG_APP_OVERPOWER_SAMPLES) {
+		return;
+	}
+
+	sOverPowerSamples = 0;
+
+	if (!RelayIsOn()) {
+		return;
+	}
+
+	LOG_ERR("Over-power: %lld mW above %d mW for %d s -- opening relay",
+		instantPowerMw, CONFIG_APP_OVERPOWER_THRESHOLD_MW, CONFIG_APP_OVERPOWER_SAMPLES);
+
+	/* Same three steps the button path takes, so the relay, the plug LED and
+	 * the OnOff attribute cannot disagree about what happened.
+	 * UpdateClusterState() marshals the attribute write onto the Matter
+	 * thread; this runs on the app task. */
+	RelaySet(false);
+	AppTask::Instance().UpdateClusterState();
+}
+#endif /* CONFIG_APP_OVERPOWER_PROTECTION */
+
 void CfIsr(const device *, gpio_callback *, uint32_t)
 {
 	atomic_inc(&sCfPulses);
@@ -200,9 +249,14 @@ void MeterPoll(void)
 	}
 
 	uint32_t median;
+	const uint32_t cfCountsPerSec = CountsPerSec(cfPulses, windowMs);
+
+#ifdef CONFIG_APP_OVERPOWER_PROTECTION
+	CheckOverPower((static_cast<int64_t>(cfCountsPerSec) * 1'000'000) / kMilliCountsPerSecPerWatt);
+#endif
 
 	/* Active power is measured continuously -- CF is not muxed. */
-	if (sCfFilter.Push(CountsPerSec(cfPulses, windowMs), &median)) {
+	if (sCfFilter.Push(cfCountsPerSec, &median)) {
 		sLastActivePowerMw = (static_cast<int64_t>(median) * 1'000'000) / kMilliCountsPerSecPerWatt;
 	}
 
