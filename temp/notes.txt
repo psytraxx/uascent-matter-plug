@@ -1,0 +1,18 @@
+Will try to read device flash MID (for unprotect N):
+Flash MID loaded: 1560EB
+Will now search for Flash def in out database...
+Flash def found! For: 1560EB
+Flash information: mid: 1560EB, icName: TH25Q16HB, manufacturer: TH, szMem: 200000, szSR: 2, cwUnp: 0, cwEnp: 7, cwMsk: 407C, sb: 2, lb: 5, cwdRd: 05-35-FF-FF, cwdWr: 01-FF-FF-FF
+Flash size is 2MB
+Entering SetProtectState(True)...
+sr: 80
+sr: 680
+final sr: 680
+msk: 407c
+cw: 0, sb: 2, lb: 5
+bfd: 0
+SetProtectState(True) success!
+Going to read encryption key...
+Encryption key read done!
+Encryption key: 00000000 00000000 00000000 00000000
+No filename given!

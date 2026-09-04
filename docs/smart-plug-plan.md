@@ -381,9 +381,12 @@ this is written from scratch. Design:
 * **Zero-power handling.** With no load, CF stops pulsing entirely. Implement a
   timeout (e.g. 3 s without a pulse ⇒ report 0 W) or the driver will hold the last
   nonzero reading forever.
-* **Calibration constants** in a header, derived from the plug's actual shunt and
-  divider values, with a Kconfig or `plug-pinout.md`-documented override. Compare against
-  a known load to fit them.
+* **Calibration constants** — ✅ recovered from the stock firmware rather than
+  derived from shunt/divider values. The stock flash's plaintext KV store holds
+  this unit's factory `bl0937` calibration as three floats; they are now in
+  `src/bl0937.cpp` as milli-scaled integers. See
+  `docs/original-pcb-trace.md`. Step 5 below is now a *check* of these numbers,
+  not a fit from scratch.
 
 **Energy accumulation.** Integrate active power over time for
 `ElectricalEnergyMeasurement`'s cumulative import. Persist the accumulator
@@ -497,7 +500,10 @@ west build -b xiao_ble -- -DCMAKE_JOB_POOLS="compile=4;link=1"
 5. **Mains, isolated, console detached.** Only after 1–4 pass. Use an isolation
    transformer if available. With USB **disconnected**, energize with a known
    resistive load (an incandescent bulb or heater of known wattage) and read the
-   power over Thread from the controller. Calibrate the constants against that load.
+   power over Thread from the controller. The constants are already populated from
+   the stock firmware, so this step verifies them rather than fitting from scratch —
+   expect the reading to be close on the first try. If voltage and current come out
+   swapped, exchange the two constants (see the note in `src/bl0937.cpp`).
 6. **Regression.** Verify factory reset still works after metering is active, and
    that the energy accumulator survives a reboot.
 
@@ -505,8 +511,10 @@ west build -b xiao_ble -- -DCMAKE_JOB_POOLS="compile=4;link=1"
 
 ## Deliverables
 
-* `plug-pinout.md` — traced net list, confirmed pin assignments, SEL polarity,
-  calibration constants.
+* `plug-pinout.md` — traced net list, confirmed pin assignments, SEL polarity.
+  Pin assignments and calibration constants are confirmed from the stock
+  firmware dump — see `docs/original-pcb-trace.md`; the relay is P6, which
+  corrects the earlier probing.
 * Updated `boards/xiao_ble.overlay` — single button, relay, plug red
   LED on P0.17, BL0937 node.
 * New `src/relay.*` ✅, `src/power_measurement.*` ✅, `src/zcl_callbacks.cpp` ✅ (OnOff->relay bridge, not yet hardware-verified), `src/bl0937.*` ✅ (Phase 3, not yet hardware-verified).

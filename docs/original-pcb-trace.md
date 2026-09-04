@@ -92,36 +92,113 @@ Measured by continuity probing, board fully USB/mains disconnected.
 | Header pad | UAM023 pin | Connects to (host side) | Function |
 |---|---|---|---|
 | H1 | 3.3V | AMS1117 output | Power in |
-| H2 | P6 | LED 1 | Status LED 1 |
+| H2 | P6 | LED 1 *(see below)* | **Relay drive** (per firmware) |
 | H3 | GND | Ground pour | Ground |
-| H4 | P7 | LED 2 | Status LED 2 |
-| H5 | RX1 | Tactile button | Button input |
+| H4 | P7 | LED 2 | Status LED |
+| H5 | RX1 | Tactile button | Button input (GPIO10) |
 | H6 | P8 | BL0937 pin 8 | SEL (V/I select) |
 | H7 | TX1 | *(not connected)* | No-connect |
-| H8 | ADC | ? | Unprobed — relay candidate |
+| H8 | ADC | ? | Unprobed — **not** the relay |
 | H9 | P24 | BL0937 pin 6 | CF (active-power pulse) |
 | H10 | CEN | ? | Unprobed — module reset |
 | H11 | P26 | BL0937 pin 7 | CF1 (V/I pulse, muxed by SEL) |
 
+## Firmware confirmation (stock BK7231 dump)
+
+The stock firmware was dumped and decrypted (see `temp/`, OpenBeken flash
+reader). It **was** encrypted — the raw dump is scrambled, and the decrypted
+images start with valid ARM vector tables. The `Encryption key: 00000000...`
+line in the reader log is the empty *user* key slot, not proof of plaintext;
+the stock Beken default key applied.
+
+Layout of the 2 MB flash (TH25Q16HB):
+
+| Region | Contents |
+|---|---|
+| `0x000000-0x00E000` | bootloader (encrypted) |
+| `0x011000-0x135000` | app firmware (encrypted) |
+| `0x1F8000-0x1FC000` | KV store, **plaintext** |
+
+Firmware load base is `0x10000`, code is Thumb. Pin assignments are not
+immediates — they live in a `.data` table copied at boot from flash VA
+`0x122858` to RAM `0x400100`, as 2-byte `{gpio, mode}` descriptors.
+
+### Pin map recovered from firmware
+
+| GPIO | Descriptor | Role | How established |
+|---|---|---|---|
+| P24 | `{24,3}` @ `0x400104` | BL0937 CF | ISR `0x134f8` = `counter++` |
+| P26 | `{26,3}` @ `0x400106` | BL0937 CF1 | ISR `0x13508` = `counter++` |
+| P8 | `{8,5}` @ `0x400109` | BL0937 SEL | plain output, no ISR |
+| **P6** | `{6,5}` @ `0x400126` | **Relay** | driven by the `switch` NV path |
+| P9 | `{9,5}` @ `0x400124` | LED idx0, mirrors relay | `set_led(state,0)` |
+| P7 | `{7,5}` @ `0x400122` | LED / status | blink loops at `0x172b0` |
+| P10 | `{10,2}` @ `0x400120` | Button, input pull-down | mode 2 = pull-down |
+
+**Metering pins are confirmed.** CF and CF1 are the only two pins in the whole
+firmware with counter ISRs attached, which is exactly and only what a BL0937
+driver does. This independently corroborates the continuity probing above.
+
+**The relay is P6**, not H8/H10. Call chain, from the Matter `switch`
+attribute down:
+
+```
+173d8: set_switch(state, persist)
+         -> writes NV key "switch"   (the same key found in the 0x1F8000 KV store)
+         -> calls 0x1738c
+1738c: set_relay(state)
+  17392:  ldr r0, =0x400126   ; descriptor {6,5} -> P6
+  17398:  bl  gpio_output     ; drive relay coil
+  173a0:  bl  set_led(state, 0)  ; mirror onto 0x400124 -> P9
+```
+
+### Calibration constants (from the plaintext KV store)
+
+The `bl0937` key at `0x1F8656` holds this unit's factory metering
+calibration as three little-endian floats:
+
+| Bytes | Value |
+|---|---|
+| `82 3c 01 41` | **8.0773** |
+| `d1 45 b7 42` | **91.6364** |
+| `f1 73 46 3f` | **0.77521** |
+
+Ordering follows BL0937 driver convention (voltage / current / power); the
+magnitudes fit. Other keys present: `switch`, `state`, `net_c`,
+`chip-factory.uniqueId` = `2D62F1658B8630C9`, and standard `chip-counters.*`.
+
+A JSON blob in the firmware confirms device identity:
+
+```json
+{"softVersion":"1.10","hardVersion":"1.0","vendorId":5120,
+ "typeId":"0x010A","vendorName":"Uascent","mpid":1002}
+```
+
+`typeId 0x010A` is On/Off Plug-in Unit — the data model this project targets.
+
 ### Still to determine
 
-**Relay drive.** Must be H8 (ADC/GPIO23) or H10 (CEN) by elimination, since
-every other pad is assigned. H8 is the strong favourite — CEN is the module's
-reset input, and P23 is documented as usable as a plain GPIO on BK7231N
-boards (one published variant runs button on P23).
+**P6 relay vs. LED 1 conflict.** Continuity probing recorded H2/P6 as
+"LED 1"; the firmware drives P6 from the relay path. Since `set_relay` drives
+P6 *and* separately calls `set_led(..., 0)` for P9, these look like genuinely
+distinct nets, so P6 most likely goes to the relay driver transistor and the
+LED 1 attribution is the error. Resolve with a meter: a GPIO cannot drive a
+coil directly, so probe **H2/P6 against the relay transistor base** in
+resistance mode — a base resistor (1k-10k) sits in series, so this reads as
+resistance, not a continuity beep. Then check whether P6 also feeds an LED.
+This is the one finding that overturns the earlier probing, so confirm it
+before wiring.
 
-A GPIO cannot drive a relay coil directly, so expect a driver stage: look for
-a small SOT-23 transistor near the coil, with a flyback diode alongside.
-Probe H8 against that transistor's **base**, in resistance mode — a base
-resistor (1k-10k) sits in series, so this reads as resistance, not a
-continuity beep. If H8 reads open, check H10, and confirm whether H10 ties to
-a pull-up near the header (which would mark it a genuine reset line).
+**P9 is not on the UAM023 datasheet pinout** (which lists only 6, 7, 8, 10,
+11, 23, 24, 26). Either the module exposes P9 undocumented, or that LED
+descriptor is dead code carried over from a variant board. Does not affect
+the relay or metering conclusions.
 
-**LED polarity.** Confirm for LED 1 and LED 2 independently — they may not
-match each other.
+**LED polarity.** Confirm for each LED independently — they may not match.
 
 **SEL polarity.** Which SEL level routes voltage vs. current onto CF1. The
-driver needs this.
+driver needs this; the firmware sets SEL as a plain output but the mapping to
+V/I channel is a BL0937 property, best confirmed with a scope on CF1.
 
 ### No published template matches this board
 
@@ -134,7 +211,7 @@ BK7231N/BL0937 plug template found conflicts with the measurements above:
 | CF1 | P26 | P6 | P6 |
 | SEL | P8 | P8 | P24 |
 | Button | RX1 (P10) | P26 | P10 |
-| Relay | ? | P24 | P26 |
+| Relay | P6 | P24 | P26 |
 
 No published mapping puts CF on P24 *and* CF1 on P26, and all of them spend
 P24 or P26 on the relay — pins this board has already committed to metering.

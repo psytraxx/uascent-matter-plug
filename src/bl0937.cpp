@@ -46,21 +46,29 @@ gpio_callback sCf1Callback;
 atomic_t sCfPulses;
 atomic_t sCf1Pulses;
 
-/* Calibration constants: PROVISIONAL, chosen to be in the right ballpark for
- * a BL0937 with typical shunt/divider values but NOT fitted against this
- * plug's actual hardware. The plan (docs/smart-plug-plan.md, Phase 3) calls
- * for comparing against a known load once mains bring-up starts and
- * recording the traced values in docs/plug-pinout.md; update these three
- * constants then, not the algorithm around them.
+/* Calibration constants, recovered from the stock firmware's own flash
+ * key-value store -- these are this exact unit's factory values, not generic
+ * ballpark numbers. See docs/original-pcb-trace.md ("Calibration constants"):
+ * the plaintext KV region at 0x1F8000 holds a "bl0937" key whose 12-byte
+ * payload is three little-endian floats.
  *
- * Expressed directly as "counts per second per unit" rather than carrying
- * the BL0937 datasheet's internal reference constants (which need the
- * shunt/divider values this design hasn't traced yet) -- so calibration is
- * one measurement: apply a known load, compare MeterPoll()'s output to a
- * reference meter, and rescale these three numbers. */
-constexpr int64_t kCountsPerSecPerWatt = 1;
-constexpr int64_t kCountsPerSecPerVolt = 1;
-constexpr int64_t kCountsPerSecPerAmp = 10;
+ * They are stored here scaled by 1000 and kept as integers, because the
+ * arithmetic below is all int64 fixed-point -- the *1000 in each formula
+ * that used to convert W->mW now cancels against this scaling instead.
+ *
+ * Expressed as "counts per second per unit", matching the stock firmware's
+ * own semantics: at 230 V CF1 runs ~1.86 kHz, and at 2300 W (this plug's 10 A
+ * ceiling) CF runs ~1.78 kHz -- both comfortably inside the BL0937's range,
+ * which is the cross-check that these are divisors and not multipliers.
+ *
+ * Still worth confirming against a reference meter at mains bring-up
+ * (docs/smart-plug-plan.md, Phase 3): the recovered floats are certain, but
+ * which one maps to voltage vs. current is inferred from BL0937 driver
+ * convention and magnitude, not proven. If V and I read swapped, exchange
+ * kMilliCountsPerSecPerVolt and kMilliCountsPerSecPerAmp. */
+constexpr int64_t kMilliCountsPerSecPerWatt = 775;   /* 0.7752066 */
+constexpr int64_t kMilliCountsPerSecPerVolt = 8077;  /* 8.0772724 */
+constexpr int64_t kMilliCountsPerSecPerAmp = 91636;  /* 91.6363602 */
 
 /* No pulses for this long on CF means no load, not "power dropped to a
  * value too low to produce a pulse in one window" -- see the plan's
@@ -152,9 +160,11 @@ void MeterPoll(void)
 
 	int64_t activePowerMw = 0;
 	if (windowMs > 0 && RelayIsOn() && nowMs - sLastNonZeroCfMs < kZeroPowerTimeoutMs) {
-		/* counts/window * 1000 / windowMs = counts/s; /calibration = W; *1000 = mW. */
+		/* counts/window * 1000 / windowMs = counts/s. Then counts/s / (milli-counts
+		 * per W / 1000) = W, and *1000 again for mW -- so *1000000 over the
+		 * milli-scaled constant in one step. */
 		const int64_t countsPerSec = (static_cast<int64_t>(cfPulses) * 1000) / windowMs;
-		activePowerMw = (countsPerSec * 1000) / kCountsPerSecPerWatt;
+		activePowerMw = (countsPerSec * 1'000'000) / kMilliCountsPerSecPerWatt;
 	}
 	/* Else: relay open, or no load recently, or first call with nothing to
 	 * compare against yet -- report a clean 0 W per the plan's zero-power
@@ -168,9 +178,9 @@ void MeterPoll(void)
 		const int64_t cf1CountsPerSec = (static_cast<int64_t>(cf1Pulses) * 1000) / windowMs;
 
 		if (sSelPhase == SelPhase::kVoltageReady) {
-			sLastRmsVoltageMv = (cf1CountsPerSec * 1000) / kCountsPerSecPerVolt;
+			sLastRmsVoltageMv = (cf1CountsPerSec * 1'000'000) / kMilliCountsPerSecPerVolt;
 		} else {
-			sLastRmsCurrentMa = (cf1CountsPerSec * 1000) / kCountsPerSecPerAmp;
+			sLastRmsCurrentMa = (cf1CountsPerSec * 1'000'000) / kMilliCountsPerSecPerAmp;
 		}
 	}
 
