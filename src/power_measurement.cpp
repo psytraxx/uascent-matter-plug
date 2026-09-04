@@ -4,6 +4,7 @@
 #include <app/AttributeAccessInterface.h>
 #include <app/clusters/electrical-energy-measurement-server/electrical-energy-measurement-server.h>
 #include <app/clusters/electrical-power-measurement-server/electrical-power-measurement-server.h>
+#include <app/reporting/reporting.h>
 #include <app/server/Server.h>
 #include <app/util/attribute-storage.h>
 #include <lib/support/BitMask.h>
@@ -123,6 +124,46 @@ int64_t sLastReportMs;
  * enough resolution to track consumption over time. */
 constexpr int64_t kEnergyReportIntervalMs = 60'000;
 
+/* Storing a value in the delegate does not tell subscribers anything -- the
+ * cluster only reads it when something marks the attribute dirty. Without
+ * that, a subscriber learns about a jump from 0 W to 2000 W no sooner than
+ * its own max interval, which can be tens of seconds.
+ *
+ * So report on change, gated by a deadband, which is what the stock firmware
+ * did: it compared each reading against the last one it had sent and pushed
+ * only when the difference exceeded a fixed threshold (docs/original-firmware.md,
+ * "Energy accumulation and reporting"). Power and current mirror its 0.05 and
+ * 0.003; the voltage figure has no stock counterpart. Which stock constant
+ * belonged to which quantity is not fully pinned down, so treat all three as
+ * tunable rather than recovered.
+ *
+ * These are far finer than the hardware resolves -- one CF pulse per second is
+ * ~1.29 W -- so in practice every genuine change reports and the deadband only
+ * suppresses arithmetic jitter. That is the intent: bound the traffic without
+ * adding latency to real changes. */
+constexpr int64_t kActivePowerDeadbandMw = 50;
+constexpr int64_t kRmsVoltageDeadbandMv = 100;
+constexpr int64_t kRmsCurrentDeadbandMa = 3;
+
+bool sHaveReported;
+int64_t sReportedActivePowerMw;
+int64_t sReportedRmsVoltageMv;
+int64_t sReportedRmsCurrentMa;
+
+/* Marks one attribute dirty if it has moved past its deadband since the value
+ * subscribers were last told about. The first call always reports, so the
+ * initial reading is never held back by a deadband it has no baseline for. */
+void ReportIfMoved(int64_t value, int64_t *reported, int64_t deadband, AttributeId attribute)
+{
+	const int64_t delta = value > *reported ? value - *reported : *reported - value;
+	if (sHaveReported && delta < deadband) {
+		return;
+	}
+
+	*reported = value;
+	MatterReportingAttributeChangeCallback(sEndpoint, ElectricalPowerMeasurement::Id, attribute);
+}
+
 } /* namespace */
 
 CHIP_ERROR PowerMeasurementInit(EndpointId endpoint)
@@ -180,6 +221,14 @@ void PowerMeasurementUpdate(int64_t activePowerMw, int64_t rmsVoltageMv, int64_t
 	}
 
 	sDelegate->Set(activePowerMw, rmsVoltageMv, rmsCurrentMa);
+
+	ReportIfMoved(activePowerMw, &sReportedActivePowerMw, kActivePowerDeadbandMw,
+		      Attributes::ActivePower::Id);
+	ReportIfMoved(rmsVoltageMv, &sReportedRmsVoltageMv, kRmsVoltageDeadbandMv,
+		      Attributes::RMSVoltage::Id);
+	ReportIfMoved(rmsCurrentMa, &sReportedRmsCurrentMa, kRmsCurrentDeadbandMa,
+		      Attributes::RMSCurrent::Id);
+	sHaveReported = true;
 
 	/* Trapezoidal energy integration over wall-clock time between calls.
 	 * The first call has no prior sample to integrate from, so it only

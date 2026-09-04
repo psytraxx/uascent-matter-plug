@@ -17,7 +17,7 @@ Recommendation summary:
 | Feature | Recommendation |
 |---|---|
 | Over-power protection | **Implement** — safety, must be local |
-| Attribute-report deadbands | **Implement** — fixes a real responsiveness gap |
+| Attribute-report deadbands | **Done** — implemented, see below |
 | Inching (auto-off) | Defer — no clean Matter surface |
 | Energy budget ("saving mode") | Skip — controller's job |
 | Away mode (schedule) | Skip — controller's job |
@@ -67,7 +67,7 @@ calibration, and the calibration has not yet been checked against a reference
 meter. Protection should land *after* mains bring-up validates the power
 reading, not before — a miscalibrated threshold is worse than none.
 
-## 2. Attribute-report deadbands — recommend implementing
+## 2. Attribute-report deadbands — implemented
 
 This one fixes a gap we have independently of the stock firmware.
 
@@ -80,9 +80,10 @@ from 0 W to 2000 W may take tens of seconds to show it.
 fixed deadbands: it computed `fabsf(current - last_reported)` and pushed only
 when the delta exceeded roughly 0.05 and 0.003 for two of the quantities.
 
-**Proposed implementation.** Call the reporting callback from
-`PowerMeasurementUpdate()` when a value moves more than its deadband since the
-value last reported:
+**Implemented** in `src/power_measurement.cpp` as `ReportIfMoved()`, called
+from `PowerMeasurementUpdate()` for each of the three attributes. The first
+call always reports, so the initial reading is not held back by a deadband it
+has no baseline for. Deadbands as shipped:
 
 | Attribute | Proposed deadband |
 |---|---|
@@ -140,6 +141,5 @@ it on the plug.
 
 1. Mains bring-up and calibration check (already Phase 3 in the plan) —
    everything else depends on the power reading being trustworthy.
-2. Attribute-report deadbands — small, independent of calibration accuracy,
-   and fixes subscriber responsiveness today.
+2. ~~Attribute-report deadbands~~ — done.
 3. Over-power protection — once the calibration is confirmed.
