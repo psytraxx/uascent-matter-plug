@@ -13,7 +13,13 @@
 
 void MeterInit(void);
 
-/* Called periodically (see kMeterPollIntervalMs in app_task.cpp) to turn the
+/* Called once per second (kMeterPollIntervalMs in app_task.cpp) to turn the
  * pulses counted since the last call into a reading and push it into the
- * Matter clusters via PowerMeasurementUpdate(). */
+ * Matter clusters via PowerMeasurementUpdate().
+ *
+ * The rate is part of the calibration, not a free parameter: readings are a
+ * median of three consecutive samples, so active power refreshes every 3 s,
+ * and SEL holds for one such window so V and I take turns and each refreshes
+ * every 6 s -- the cadence the stock firmware used to derive the calibration
+ * divisors. See docs/original-firmware.md. */
 void MeterPoll(void);

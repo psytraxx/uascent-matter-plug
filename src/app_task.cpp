@@ -32,7 +32,7 @@ using namespace ::chip::DeviceLayer;
 namespace
 {
 constexpr EndpointId kPlugEndpointId = 1;
-constexpr uint32_t kMeterPollIntervalMs = 2000;
+constexpr uint32_t kMeterPollIntervalMs = 1000;
 
 Nrf::Matter::IdentifyCluster sIdentifyCluster(kPlugEndpointId);
 

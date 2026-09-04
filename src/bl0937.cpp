@@ -3,21 +3,22 @@
  *
  * Measurement strategy: CF and CF1 are pulse-frequency outputs (active power
  * and V/I respectively, the latter muxed by SEL). Pulses are counted via GPIO
- * edge interrupts and turned into a frequency once per poll window
- * (kMeterPollIntervalMs, currently 2s, set in app_task.cpp) rather than timing
- * individual periods -- far more robust at low power, where pulses can be
- * seconds apart.
+ * edge interrupts and turned into a frequency once per second rather than
+ * timing individual periods -- far more robust at low power, where pulses can
+ * be seconds apart.
  *
- * SEL alternates between voltage and current every two poll windows: the
- * first window after a flip settles (discarded), the second is read. So V
- * and I each update once per four poll windows -- see the SelPhase state
- * machine below.
+ * The sampling scheme here is a deliberate reimplementation of what the stock
+ * Uascent firmware did, recovered by disassembly -- see
+ * docs/original-firmware.md ("Metering pipeline") for the addresses and
+ * evidence behind each constant. Matching it matters because the calibration
+ * divisors below were lifted from that firmware's own NV store, and they only
+ * mean what they say when fed the same way: a 1 Hz sample rate, a median of
+ * three, and a 3 s SEL dwell.
  */
 
 #include "bl0937.h"
 
 #include "power_measurement.h"
-#include "relay.h"
 
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
@@ -47,52 +48,76 @@ atomic_t sCfPulses;
 atomic_t sCf1Pulses;
 
 /* Calibration constants, recovered from the stock firmware's own flash
- * key-value store -- these are this exact unit's factory values, not generic
- * ballpark numbers. See docs/original-pcb-trace.md ("Calibration constants"):
- * the plaintext KV region at 0x1F8000 holds a "bl0937" key whose 12-byte
- * payload is three little-endian floats.
+ * key-value store -- this exact unit's factory values, not generic ballpark
+ * numbers. The plaintext KV region at 0x1F8000 holds a "bl0937" key whose
+ * 12-byte payload is three little-endian floats.
  *
- * They are stored here scaled by 1000 and kept as integers, because the
- * arithmetic below is all int64 fixed-point -- the *1000 in each formula
- * that used to convert W->mW now cancels against this scaling instead.
+ * The disassembly also settles which float is which: the stock metering tick
+ * divides CF by the third and CF1 by the first or second depending on SEL
+ * (docs/original-firmware.md, "Scaling"). So these are divisors -- "counts
+ * per second per unit" -- and the V/I assignment is proven, not inferred.
  *
- * Expressed as "counts per second per unit", matching the stock firmware's
- * own semantics: at 230 V CF1 runs ~1.86 kHz, and at 2300 W (this plug's 10 A
- * ceiling) CF runs ~1.78 kHz -- both comfortably inside the BL0937's range,
- * which is the cross-check that these are divisors and not multipliers.
- *
- * Still worth confirming against a reference meter at mains bring-up
- * (docs/smart-plug-plan.md, Phase 3): the recovered floats are certain, but
- * which one maps to voltage vs. current is inferred from BL0937 driver
- * convention and magnitude, not proven. If V and I read swapped, exchange
- * kMilliCountsPerSecPerVolt and kMilliCountsPerSecPerAmp. */
+ * Stored scaled by 1000 as integers because the arithmetic here is int64
+ * fixed-point; the *1000 that converts W to mW cancels against that scaling,
+ * hence the *1'000'000 in one step at each use site. */
 constexpr int64_t kMilliCountsPerSecPerWatt = 775;   /* 0.7752066 */
 constexpr int64_t kMilliCountsPerSecPerVolt = 8077;  /* 8.0772724 */
 constexpr int64_t kMilliCountsPerSecPerAmp = 91636;  /* 91.6363602 */
 
-/* No pulses for this long on CF means no load, not "power dropped to a
- * value too low to produce a pulse in one window" -- see the plan's
- * zero-power-handling note. Several poll windows, so a genuinely light but
- * nonzero load isn't misreported as zero. */
-constexpr uint32_t kZeroPowerTimeoutMs = 6'000;
+/* Samples per filter window. The stock firmware collects three, sorts them and
+ * takes the middle one. That median is also what makes a separate SEL settling
+ * window unnecessary: the one sample straddling a SEL flip is a transient
+ * outlier, and a median of three discards outliers by construction. Changing
+ * this to an even number would mean averaging two middle samples and would
+ * reintroduce the settling error. */
+constexpr size_t kFilterDepth = 3;
 
-/* Each phase holds for two poll windows: the first after a flip settles (and
- * is discarded), the second is read. So SEL flips once every two polls, not
- * every poll -- flipping every poll would mean every single window is a
- * settling window and none would ever be usable. */
-enum class SelPhase {
-	kVoltageSettling,
-	kVoltageReady,
-	kCurrentSettling,
-	kCurrentReady,
-};
+/* SEL holds for one full filter window -- 3 s at the 1 Hz poll rate, matching
+ * the stock firmware's 3000 ms dwell. Since the two quantities take turns,
+ * each of V and I refreshes every 6 s; active power, which is not muxed,
+ * refreshes every 3 s. */
+bool sSelIsVoltage = true;
 
-SelPhase sSelPhase = SelPhase::kVoltageSettling;
-
+int64_t sLastActivePowerMw;
 int64_t sLastRmsVoltageMv;
 int64_t sLastRmsCurrentMa;
-int64_t sLastNonZeroCfMs;
 int64_t sLastPollMs;
+
+/* Median-of-three over a channel's counts-per-second samples. Push() returns
+ * true exactly once per kFilterDepth calls, when a window completes. */
+class MedianFilter {
+public:
+	bool Push(uint32_t sample, uint32_t *median)
+	{
+		mSamples[mCount++] = sample;
+		if (mCount < kFilterDepth) {
+			return false;
+		}
+		mCount = 0;
+
+		/* Sorting network for three elements -- the stock firmware
+		 * bubble-sorts and indexes the middle; same result, no loop. */
+		uint32_t a = mSamples[0], b = mSamples[1], c = mSamples[2];
+		if (a > b) {
+			const uint32_t t = a; a = b; b = t;
+		}
+		if (b > c) {
+			const uint32_t t = b; b = c; c = t;
+		}
+		if (a > b) {
+			const uint32_t t = a; a = b; b = t;
+		}
+		*median = b;
+		return true;
+	}
+
+private:
+	uint32_t mSamples[kFilterDepth];
+	size_t mCount;
+};
+
+MedianFilter sCfFilter;
+MedianFilter sCf1Filter;
 
 void CfIsr(const device *, gpio_callback *, uint32_t)
 {
@@ -112,6 +137,15 @@ uint32_t TakePulses(atomic_t *counter)
 	return static_cast<uint32_t>(atomic_set(counter, 0));
 }
 
+/* Normalise a window's raw pulse count to counts per second. The stock
+ * firmware assumes its 1 s tick is exactly 1 s and uses the raw count; doing
+ * the division against the measured window makes the reading immune to timer
+ * jitter and is identical whenever the timer is on time. */
+uint32_t CountsPerSec(uint32_t pulses, int64_t windowMs)
+{
+	return static_cast<uint32_t>((static_cast<int64_t>(pulses) * 1000) / windowMs);
+}
+
 } /* namespace */
 
 void MeterInit(void)
@@ -127,12 +161,18 @@ void MeterInit(void)
 
 	gpio_pin_configure_dt(&sCf, GPIO_INPUT);
 	gpio_pin_configure_dt(&sCf1, GPIO_INPUT);
-	/* SEL: LOW selects voltage, HIGH selects current on the BL0937 -- see
-	 * the datasheet's SEL pin description. GPIO_OUTPUT_INACTIVE honours
-	 * devicetree polarity, so this starts LOW (voltage) regardless of the
-	 * overlay's active-level choice, matching sSelPhase's initial value
-	 * of kVoltageSettling above. */
-	gpio_pin_configure_dt(&sSel, GPIO_OUTPUT_INACTIVE);
+
+	/* SEL HIGH selects voltage, LOW selects current. This is the opposite
+	 * of the HLW8012 the BL0937 is otherwise pin-compatible with, and the
+	 * stock firmware is unambiguous about it: its metering tick sends
+	 * SEL == 0 to the current divisor and SEL != 0 to the voltage divisor,
+	 * and its .data image boots SEL to 1. See docs/original-firmware.md,
+	 * "SEL multiplexing -- polarity".
+	 *
+	 * GPIO_OUTPUT_ACTIVE honours devicetree polarity, so this starts in the
+	 * voltage phase regardless of the overlay's active-level choice,
+	 * matching sSelIsVoltage above. */
+	gpio_pin_configure_dt(&sSel, GPIO_OUTPUT_ACTIVE);
 
 	gpio_init_callback(&sCfCallback, CfIsr, BIT(sCf.pin));
 	gpio_add_callback(sCf.port, &sCfCallback);
@@ -141,8 +181,6 @@ void MeterInit(void)
 	gpio_init_callback(&sCf1Callback, Cf1Isr, BIT(sCf1.pin));
 	gpio_add_callback(sCf1.port, &sCf1Callback);
 	gpio_pin_interrupt_configure_dt(&sCf1, GPIO_INT_EDGE_TO_ACTIVE);
-
-	sLastNonZeroCfMs = k_uptime_get();
 }
 
 void MeterPoll(void)
@@ -154,56 +192,33 @@ void MeterPoll(void)
 	const uint32_t cfPulses = TakePulses(&sCfPulses);
 	const uint32_t cf1Pulses = TakePulses(&sCf1Pulses);
 
-	if (cfPulses > 0) {
-		sLastNonZeroCfMs = nowMs;
+	/* First call has no elapsed window to normalise against; it only starts
+	 * the clock. Discard its counts rather than feeding a bogus rate into
+	 * the filters. */
+	if (windowMs <= 0) {
+		return;
 	}
 
-	int64_t activePowerMw = 0;
-	if (windowMs > 0 && RelayIsOn() && nowMs - sLastNonZeroCfMs < kZeroPowerTimeoutMs) {
-		/* counts/window * 1000 / windowMs = counts/s. Then counts/s / (milli-counts
-		 * per W / 1000) = W, and *1000 again for mW -- so *1000000 over the
-		 * milli-scaled constant in one step. */
-		const int64_t countsPerSec = (static_cast<int64_t>(cfPulses) * 1000) / windowMs;
-		activePowerMw = (countsPerSec * 1'000'000) / kMilliCountsPerSecPerWatt;
+	uint32_t median;
+
+	/* Active power is measured continuously -- CF is not muxed. */
+	if (sCfFilter.Push(CountsPerSec(cfPulses, windowMs), &median)) {
+		sLastActivePowerMw = (static_cast<int64_t>(median) * 1'000'000) / kMilliCountsPerSecPerWatt;
 	}
-	/* Else: relay open, or no load recently, or first call with nothing to
-	 * compare against yet -- report a clean 0 W per the plan's zero-power
-	 * handling, rather than holding a stale value. */
 
-	/* The window that just elapsed measured whatever phase sSelPhase named
-	 * *before* this call -- use it only if that phase was a *Ready state,
-	 * meaning SEL had already been stable for one full prior window. */
-	if (windowMs > 0 &&
-	    (sSelPhase == SelPhase::kVoltageReady || sSelPhase == SelPhase::kCurrentReady)) {
-		const int64_t cf1CountsPerSec = (static_cast<int64_t>(cf1Pulses) * 1000) / windowMs;
-
-		if (sSelPhase == SelPhase::kVoltageReady) {
-			sLastRmsVoltageMv = (cf1CountsPerSec * 1'000'000) / kMilliCountsPerSecPerVolt;
+	/* SEL is flipped only here, when a CF1 window completes, so the level
+	 * was constant across all kFilterDepth samples that produced this
+	 * median and sSelIsVoltage still names it. */
+	if (sCf1Filter.Push(CountsPerSec(cf1Pulses, windowMs), &median)) {
+		if (sSelIsVoltage) {
+			sLastRmsVoltageMv = (static_cast<int64_t>(median) * 1'000'000) / kMilliCountsPerSecPerVolt;
 		} else {
-			sLastRmsCurrentMa = (cf1CountsPerSec * 1'000'000) / kMilliCountsPerSecPerAmp;
+			sLastRmsCurrentMa = (static_cast<int64_t>(median) * 1'000'000) / kMilliCountsPerSecPerAmp;
 		}
+
+		sSelIsVoltage = !sSelIsVoltage;
+		gpio_pin_set_dt(&sSel, sSelIsVoltage ? 1 : 0);
 	}
 
-	/* Advance to the next state for the window about to start. Only the
-	 * two "Settling" transitions actually move the SEL pin; entering a
-	 * "Ready" state leaves SEL exactly where the settling window already
-	 * put it, one window ago. */
-	switch (sSelPhase) {
-	case SelPhase::kVoltageSettling:
-		sSelPhase = SelPhase::kVoltageReady;
-		break;
-	case SelPhase::kVoltageReady:
-		sSelPhase = SelPhase::kCurrentSettling;
-		gpio_pin_set_dt(&sSel, 1);
-		break;
-	case SelPhase::kCurrentSettling:
-		sSelPhase = SelPhase::kCurrentReady;
-		break;
-	case SelPhase::kCurrentReady:
-		sSelPhase = SelPhase::kVoltageSettling;
-		gpio_pin_set_dt(&sSel, 0);
-		break;
-	}
-
-	PowerMeasurementUpdate(activePowerMw, sLastRmsVoltageMv, sLastRmsCurrentMa);
+	PowerMeasurementUpdate(sLastActivePowerMw, sLastRmsVoltageMv, sLastRmsCurrentMa);
 }

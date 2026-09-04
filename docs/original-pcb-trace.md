@@ -105,6 +105,12 @@ Measured by continuity probing, board fully USB/mains disconnected.
 
 ## Firmware confirmation (stock BK7231 dump)
 
+> Behaviour of the stock firmware -- metering algorithm, SEL polarity,
+> protection features, task model -- is documented separately in
+> `docs/original-firmware.md`. This section covers only what the dump proves
+> about the *pin map*.
+
+
 The stock firmware was dumped and decrypted (see `temp/`, OpenBeken flash
 reader). It **was** encrypted — the raw dump is scrambled, and the decrypted
 images start with valid ARM vector tables. The `Encryption key: 00000000...`
