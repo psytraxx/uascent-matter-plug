@@ -1,7 +1,7 @@
 #!/bin/sh
 # Flash the firmware over the Adafruit UF2 bootloader.
 #
-#   scripts/flash.sh           flash build/uascent-matter-plug/zephyr/zephyr.uf2
+#   scripts/flash.sh           flash build/<image>/zephyr/zephyr.uf2
 #   scripts/flash.sh -b        build first, then flash
 #
 # The board has no on-board debug probe, so `west flash` does not work: the
@@ -14,10 +14,12 @@ case "$1" in
 	-b|--build) scripts/build.sh || exit 1; shift ;;
 esac
 
-UF2=build/uascent-matter-plug/zephyr/zephyr.uf2
+# The image directory is named by sysbuild, so match it by glob rather than
+# hard-coding a name that changes with the project.
+UF2=$(ls build/*/zephyr/zephyr.uf2 2>/dev/null | head -1)
 
-if [ ! -f "$UF2" ]; then
-	echo "error: $UF2 not found -- run scripts/build.sh first" >&2
+if [ -z "$UF2" ]; then
+	echo "error: no build/*/zephyr/zephyr.uf2 -- run scripts/build.sh first" >&2
 	exit 1
 fi
 
