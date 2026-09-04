@@ -82,6 +82,11 @@ public:
 	}
 	CHIP_ERROR EndHarmonicPhasesRead() override { return CHIP_NO_ERROR; }
 
+	/* Voltage is the instantaneous/DC attribute; an AC-only plug measures
+	 * RMSVoltage instead, so this is never populated and the attribute is
+	 * left out of the OptionalAttributes bitmask below -- the .matter IDL
+	 * has no storage for it either. The override still has to exist: it is
+	 * pure virtual on Delegate. */
 	DataModel::Nullable<int64_t> GetVoltage() override { return DataModel::NullNullable; }
 	DataModel::Nullable<int64_t> GetActiveCurrent() override { return DataModel::NullNullable; }
 	DataModel::Nullable<int64_t> GetReactiveCurrent() override { return DataModel::NullNullable; }
@@ -173,8 +178,7 @@ CHIP_ERROR PowerMeasurementInit(EndpointId endpoint)
 	sDelegate = std::make_unique<PlugPowerDelegate>();
 	sInstance = std::make_unique<Instance>(
 		endpoint, *sDelegate, BitMask<Feature>(Feature::kAlternatingCurrent),
-		BitMask<OptionalAttributes>(OptionalAttributes::kOptionalAttributeVoltage,
-					    OptionalAttributes::kOptionalAttributeRMSVoltage,
+		BitMask<OptionalAttributes>(OptionalAttributes::kOptionalAttributeRMSVoltage,
 					    OptionalAttributes::kOptionalAttributeRMSCurrent));
 
 	CHIP_ERROR err = sInstance->Init();
