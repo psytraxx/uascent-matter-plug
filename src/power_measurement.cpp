@@ -30,33 +30,67 @@ namespace
  * the cluster never asks the delegate for those in the first place.
  * ActivePower/RMSVoltage/RMSCurrent are the only three PowerMeasurementUpdate()
  * actually writes. */
+/* 3680 W / 16 A is a 230 V socket's ceiling; 300 V spans any mains this plug
+ * could plausibly see. These bound what the cluster claims it can measure --
+ * they are not the over-power trip point, which is APP_OVERPOWER_THRESHOLD_MW
+ * and must match the plug's own rating. */
+struct MeasurementSpec {
+	MeasurementTypeEnum type;
+	int64_t min;
+	int64_t max;
+	const Structs::MeasurementAccuracyRangeStruct::Type *ranges;
+};
+
+constexpr chip::Percent100ths kFivePercent = 500;
+
+const Structs::MeasurementAccuracyRangeStruct::Type kPowerRange[] = {
+	{ .rangeMin = 0, .rangeMax = 3'680'000, .percentMax = MakeOptional(kFivePercent) }
+};
+const Structs::MeasurementAccuracyRangeStruct::Type kVoltageRange[] = {
+	{ .rangeMin = 0, .rangeMax = 300'000, .percentMax = MakeOptional(kFivePercent) }
+};
+const Structs::MeasurementAccuracyRangeStruct::Type kCurrentRange[] = {
+	{ .rangeMin = 0, .rangeMax = 16'000, .percentMax = MakeOptional(kFivePercent) }
+};
+
+const MeasurementSpec kMeasurementSpecs[] = {
+	{ MeasurementTypeEnum::kActivePower, 0, 3'680'000, kPowerRange },
+	{ MeasurementTypeEnum::kRMSVoltage, 0, 300'000, kVoltageRange },
+	{ MeasurementTypeEnum::kRMSCurrent, 0, 16'000, kCurrentRange },
+};
+constexpr uint8_t kMeasurementTypeCount = static_cast<uint8_t>(ARRAY_SIZE(kMeasurementSpecs));
+
 class PlugPowerDelegate : public ElectricalPowerMeasurement::Delegate {
 public:
 	PowerModeEnum GetPowerMode() override { return PowerModeEnum::kAc; }
-	uint8_t GetNumberOfMeasurementTypes() override { return 1; }
+	uint8_t GetNumberOfMeasurementTypes() override { return kMeasurementTypeCount; }
 
 	CHIP_ERROR StartAccuracyRead() override { return CHIP_NO_ERROR; }
+
+	/* The Accuracy attribute is a list with one entry per quantity the
+	 * device actually measures. Declaring only ActivePower here -- as this
+	 * did originally -- leaves RMSVoltage and RMSCurrent published but
+	 * undeclared, which is not conformant and gives a controller no accuracy
+	 * or range to describe them with. Some controllers use this list to
+	 * decide which sensors to surface at all, so an omission here can show up
+	 * as a missing entity rather than as a missing accuracy figure.
+	 *
+	 * Ranges are the plug's plausible span, not measured figures; the
+	 * percentages are placeholders pending the calibration check in
+	 * docs/smart-plug-plan.md's Phase 3. */
 	CHIP_ERROR GetAccuracyByIndex(uint8_t index, Structs::MeasurementAccuracyStruct::Type &accuracy) override
 	{
-		if (index > 0) {
+		if (index >= kMeasurementTypeCount) {
 			return CHIP_ERROR_PROVIDER_LIST_EXHAUSTED;
 		}
 
-		/* One accuracy range covering the BL0937's practical span. Values
-		 * are placeholders -- the plan calls for fitting real accuracy
-		 * figures against a known load once mains bring-up starts; see
-		 * docs/smart-plug-plan.md's calibration step. */
-		static const Structs::MeasurementAccuracyRangeStruct::Type kRanges[] = { {
-			.rangeMin = 0,
-			.rangeMax = 3'680'000, /* 3680 W in mW: a 16 A UK/EU socket's ceiling. */
-			.percentMax = MakeOptional(static_cast<chip::Percent100ths>(500)), /* 5% */
-		} };
-
-		accuracy.measurementType = MeasurementTypeEnum::kActivePower;
+		const MeasurementSpec &spec = kMeasurementSpecs[index];
+		accuracy.measurementType = spec.type;
 		accuracy.measured = true;
-		accuracy.minMeasuredValue = 0;
-		accuracy.maxMeasuredValue = 3'680'000;
-		accuracy.accuracyRanges = DataModel::List<const Structs::MeasurementAccuracyRangeStruct::Type>(kRanges);
+		accuracy.minMeasuredValue = spec.min;
+		accuracy.maxMeasuredValue = spec.max;
+		accuracy.accuracyRanges =
+			DataModel::List<const Structs::MeasurementAccuracyRangeStruct::Type>(spec.ranges, 1);
 		return CHIP_NO_ERROR;
 	}
 	CHIP_ERROR EndAccuracyRead() override { return CHIP_NO_ERROR; }
