@@ -87,20 +87,21 @@ V/I channel select.
 
 ## Header pad mapping
 
-Measured by continuity probing, board fully USB/mains disconnected.
+Measured by continuity probing, board fully USB/mains disconnected, then
+reconciled against the stock firmware (see below) where the two disagreed.
 
 | Header pad | UAM023 pin | Connects to (host side) | Function |
 |---|---|---|---|
 | H1 | 3.3V | AMS1117 output | Power in |
-| H2 | P6 | LED 1 *(see below)* | **Relay drive** (per firmware) |
+| H2 | P6 | Relay driver + LED 1 (same net) | **Relay drive** |
 | H3 | GND | Ground pour | Ground |
-| H4 | P7 | LED 2 | Status LED |
+| H4 | P7 | LED 2 | Status LED (network state) |
 | H5 | RX1 | Tactile button | Button input (GPIO10) |
 | H6 | P8 | BL0937 pin 8 | SEL (V/I select) |
 | H7 | TX1 | *(not connected)* | No-connect |
-| H8 | ADC | ? | Unprobed — **not** the relay |
+| H8 | ADC | *(unused)* | Not driven by stock firmware |
 | H9 | P24 | BL0937 pin 6 | CF (active-power pulse) |
-| H10 | CEN | ? | Unprobed — module reset |
+| H10 | CEN | *(unused)* | Module reset; not driven |
 | H11 | P26 | BL0937 pin 7 | CF1 (V/I pulse, muxed by SEL) |
 
 ## Firmware confirmation (stock BK7231 dump)
@@ -182,29 +183,47 @@ A JSON blob in the firmware confirms device identity:
 
 `typeId 0x010A` is On/Off Plug-in Unit — the data model this project targets.
 
+### Resolved: P6 is the relay, and drives LED 1 with it
+
+Continuity probing recorded H2/P6 as "LED 1"; the stock firmware drives P6
+from the `switch` NV path, i.e. as the relay. **The firmware wins** — it is
+deterministic evidence, and its BL0937 assignments (CF=P24, CF1=P26, SEL=P8)
+independently reproduced the probing exactly, which makes a probing slip far
+more likely than a decode error on the one pin where they disagree.
+
+The two readings reconcile cleanly. The firmware's `set_relay()` drives P6 and
+*also* calls `set_led(state, 0)`, whose descriptor is module pin **P9** — a pin
+the UAM023 does not bring out to the header at all (the datasheet exposes only
+6, 7, 8, 10, 11, 23, 24, 26). So that second LED output goes nowhere on this
+module, and the relay-state LED the board plainly has must be driven in
+hardware instead: it sits on the relay drive net. Probing H2 found that LED and
+called the pad an LED output; the firmware drives the same net as the relay.
+Both observations are of one net carrying both loads.
+
+Consequences, now reflected in `boards/xiao_ble.overlay`:
+
+- **Relay drive is H2 (P6)**, wired to D5/P0.05. H8 and H10 are unused.
+- **Only one plug LED needs a GPIO** — H4 (P7), the network/commissioning
+  indicator. Relay-state indication comes free with driving H2.
+- D6 is freed; six signals now land on the edge connector, not seven.
+
+What would falsify this: driving H2 and seeing an LED light but the relay not
+switch (or vice versa). That is visible on the bench the first time the relay
+is exercised, so no meter session is needed to catch it.
+
+### Resolved: SEL polarity
+
+**SEL high selects voltage, low selects current** — the opposite of the
+HLW8012 convention the BL0937 is otherwise pin-compatible with, and the
+opposite of what this project's driver first assumed. The stock metering tick
+branches `SEL == 0` to the current divisor and `SEL != 0` to the voltage
+divisor, and its `.data` image boots SEL high. See `docs/original-firmware.md`,
+"SEL multiplexing -- polarity". Applied in `src/bl0937.cpp`.
+
 ### Still to determine
 
-**P6 relay vs. LED 1 conflict.** Continuity probing recorded H2/P6 as
-"LED 1"; the firmware drives P6 from the relay path. Since `set_relay` drives
-P6 *and* separately calls `set_led(..., 0)` for P9, these look like genuinely
-distinct nets, so P6 most likely goes to the relay driver transistor and the
-LED 1 attribution is the error. Resolve with a meter: a GPIO cannot drive a
-coil directly, so probe **H2/P6 against the relay transistor base** in
-resistance mode — a base resistor (1k-10k) sits in series, so this reads as
-resistance, not a continuity beep. Then check whether P6 also feeds an LED.
-This is the one finding that overturns the earlier probing, so confirm it
-before wiring.
-
-**P9 is not on the UAM023 datasheet pinout** (which lists only 6, 7, 8, 10,
-11, 23, 24, 26). Either the module exposes P9 undocumented, or that LED
-descriptor is dead code carried over from a variant board. Does not affect
-the relay or metering conclusions.
-
-**LED polarity.** Confirm for each LED independently — they may not match.
-
-**SEL polarity.** Which SEL level routes voltage vs. current onto CF1. The
-driver needs this; the firmware sets SEL as a plain output but the mapping to
-V/I channel is a BL0937 property, best confirmed with a scope on CF1.
+**LED polarity.** Active-low is assumed for the network LED on H4, matching
+the XIAO's on-board RGB. Confirm on the bench.
 
 ### No published template matches this board
 

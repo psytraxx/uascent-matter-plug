@@ -227,16 +227,19 @@ nRF52840 pins do):
 | BL0937 CF (active power) | in, pulse | D2 / P0.28 |
 | BL0937 CF1 (V or I, muxed) | in, pulse | D3 / P0.29 |
 | BL0937 SEL | out | D4 / P0.04 |
-| Relay drive | out | D6 / P1.11 |
+| Relay drive | out | D5 / P0.05 (header H2) |
 | Button | in, pull-up, active-low | D0 / P0.02 |
-| Plug LED 1 (relay state) | out | P0.17 (module-internal, see below) |
 | Plug LED 2 (network/commissioning state) | out | D1 / P0.03 |
 
-CF/CF1 are kept on D2/D3 so they retain an ADC alternate function. The relay moves to
-D6 (digital-only, which is all it needs), preserving D5 — and therefore AIN3 — as a
-spare. D1 now carries the second plug LED rather than staying free; D5 is kept open
-instead because D4/D5 are the I2C pair and keeping one of them open costs nothing now
-and keeps a future sensor option cheap.
+CF/CF1 are kept on D2/D3 so they retain an ADC alternate function.
+
+The relay sits on header pad **H2**, established from the stock firmware — see
+`docs/original-pcb-trace.md`, "Resolved: P6 is the relay". H2 was already the pad
+assigned to D5, so the relay takes D5 and D6 is freed.
+
+**Plug LED 1 needs no GPIO.** The relay-state LED sits on the relay drive net and
+follows it in hardware; driving the relay lights it. That is also why probing read
+H2 as an LED output. Only the network LED is software-driven.
 
 **Level check:** the BL0937 runs at 3.3 V and the XIAO is a 3.3 V part, so CF/CF1/SEL
 are directly compatible. Confirm the plug's 3V3 rail can supply the XIAO — the
@@ -300,24 +303,24 @@ The sealed enclosure hides the XIAO's on-board RGB entirely, so the plug's own t
 LEDs are the *only* feedback the user ever sees — split the two signals cleanly
 across them:
 
-| Condition | Plug LED 1 (relay) | Plug LED 2 (network) | On-board RGB (debug mirror) |
+| Condition | Plug LED 1 (relay, hardware) | Plug LED 2 (network) | On-board RGB (debug mirror) |
 |---|---|---|---|
 | Relay ON | solid on | — | green solid |
 | Relay OFF | off | — | off (or dim white) |
-| Commissioning window open | mirrors relay | **blinking** | blue blinking |
-| Provisioned / connected, no commissioning | mirrors relay | off (or dim solid) | off |
-| Fatal / unrecoverable | fast blink | fast blink | red solid |
+| Commissioning window open | follows relay | **blinking** | blue blinking |
+| Provisioned / connected, no commissioning | follows relay | off (or dim solid) | off |
+| Fatal / unrecoverable | follows relay | fast blink | red solid |
 
-LED 1 tracks **relay state** only. LED 2 tracks **network/commissioning state**
-only (`Nrf::DeviceState`) and is silent once provisioned. Putting the two facts on
+LED 1 tracks **relay state** only, and does so without software involvement — it is
+on the relay drive net. LED 2 tracks **network/commissioning state** only
+(`Nrf::DeviceState`) and is silent once provisioned. The two facts landing on
 separate LEDs avoids the precedence conflict a single shared LED would need
-(commissioning blink outranking relay state).
+(commissioning blink outranking relay state) — and here the split costs no GPIO.
 
 This is a real change from the current code: `src/status_led.cpp` today is driven
 *only* by `AppTask::UpdateStatusLed`, which reads `Nrf::GetBoard().GetDeviceState()`
 — a network state, mapping directly onto the new LED 2. The relay-state input for
-LED 1 comes from a different source (the OnOff attribute) and did not exist in the
-code before Phase 2's `zcl_callbacks.cpp`.
+LED 1 needs no such input: it is hardware-driven off the relay net.
 
 **Restructure into one indication module** — extend `src/status_led.*` (rather than
 adding a parallel module) so a single owner arbitrates all three LEDs and there is no
@@ -328,8 +331,9 @@ risk of two writers fighting over the same GPIO:
 * **On-board RGB stays a full mirror of both**, useful for USB-powered bench
   debugging before the case is closed (see table above).
 * Called from two places: `UpdateStatusLed` (already registered via `Board::Init`,
-  fires on every device-state change, drives LED 2 + RGB) and the new OnOff path in
-  `zcl_callbacks.cpp` (drives LED 1 + RGB).
+  fires on every device-state change, drives LED 2 + RGB) and the OnOff path in
+  `zcl_callbacks.cpp` (drives the RGB's green channel; plug LED 1 follows the relay
+  in hardware).
 
 Keep the existing `sBlinkTimer` / `SetChannels` structure in `status_led.cpp` — it
 already handles "only restart the blink timer when the state actually changes,"
@@ -516,13 +520,13 @@ west build -b xiao_ble -- -DCMAKE_JOB_POOLS="compile=4;link=1"
   firmware dump — see `docs/original-pcb-trace.md`; the relay is P6, which
   corrects the earlier probing.
 * Updated `boards/xiao_ble.overlay` — single button, relay, plug red
-  LED on P0.17, BL0937 node.
+  LED on D1, BL0937 node.
 * New `src/relay.*` ✅, `src/power_measurement.*` ✅, `src/zcl_callbacks.cpp` ✅ (OnOff->relay bridge, not yet hardware-verified), `src/bl0937.*` ✅ (Phase 3, not yet hardware-verified).
 * `src/meter_stub.*` served the step-C fit check and mains-free reporting-path
   testing, then was removed once `src/bl0937.*` replaced it -- both present the
   same `MeterInit()`/`MeterPoll()` shape, so nothing else changed when one
   swapped for the other.
-* Extended `src/status_led.*` ✅ — drives two plug LEDs independently (LED 1: relay
+* Extended `src/status_led.*` ✅ — drives the network plug LED (LED 1 follows the relay
   state, LED 2: network/commissioning state) and mirrors both in colour on the
   on-board RGB. Not yet hardware-verified (real LED pins still provisional pending
   Phase 0 tracing).
@@ -584,7 +588,7 @@ no mains until the firmware is proven on the bench.
 | **B** | **Measure flash + RAM.** `arm-zephyr-eabi-size build/uascent-matter/zephyr/zephyr.elf` | ✅ done — 670 KB / 183 KB after Step A |
 | **C** | Phase 4 clusters wired to a **fake meter** — a stub emitting a synthetic ramp instead of BL0937 data | ✅ **done — the gate passed.** `src/meter_stub.cpp` (behind `CONFIG_APP_METER_STUB`) feeds `src/power_measurement.cpp`'s real EPM `Delegate`/`Instance` and EEM's `SetMeasurementAccuracy`/`NotifyCumulativeEnergyMeasured`. Full clusters, TLV encoders, and reporting engine linked and building. |
 | **D** | **Re-measure.** This is the true worst case — all clusters and TLV encoders linked in | ✅ **675,184 B flash (83.7%), 183,444 B RAM (70.0%).** ~113 KB flash / ~77 KB RAM free — fits with margin, no fallback levers needed. |
-| **E** | Phase 2 relay + button + LED indication, on bare XIAO with an LED on the relay pad | ⏳ **code done for the two-LED split, not yet verified on hardware.** `src/zcl_callbacks.cpp` bridges the OnOff cluster to `RelaySet()`/`StatusLedSetRelayState()` both ways: `MatterPostAttributeChangeCallback` for controller writes, `emberAfOnOffClusterInitCallback` to restore `StartUpOnOff` at boot. The button handler (`src/app_task.cpp`) toggles the relay and reports it through `AppTask::UpdateClusterState()`. `status_led.cpp` now drives plug LED 1 (relay, P0.17) and plug LED 2 (network, D1) independently — no precedence logic needed, since each LED renders only its own axis. Builds clean: 666,700 B flash (82.6%), 183,124 B RAM (69.9%). Remaining: press the button on real hardware and confirm relay GPIO, both plug LEDs, and the reported attribute all agree. |
+| **E** | Phase 2 relay + button + LED indication, on bare XIAO with an LED on the relay pad | ⏳ **code done for the two-LED split, not yet verified on hardware.** `src/zcl_callbacks.cpp` bridges the OnOff cluster to `RelaySet()`/`StatusLedSetRelayState()` both ways: `MatterPostAttributeChangeCallback` for controller writes, `emberAfOnOffClusterInitCallback` to restore `StartUpOnOff` at boot. The button handler (`src/app_task.cpp`) toggles the relay and reports it through `AppTask::UpdateClusterState()`. `status_led.cpp` drives plug LED 2 (network, D1); plug LED 1 follows the relay in hardware off the H2 net, so it needs no GPIO and no precedence logic. Builds clean: 665,872 B flash (82.5%), 183,124 B RAM (69.9%). Remaining: press the button on real hardware and confirm the relay GPIO on D5/H2, both plug LEDs, and the reported attribute all agree. |
 | **F** | Phase 0 tracing → fill `plug-pinout.md` → update overlay | pins CONFIRMED |
 | **G** | **Solder into plug, power via USB, no mains.** Full functional test: relay drive, button, LEDs, commissioning | everything but real readings works |
 | **H** | Phase 3 BL0937 driver, validated by injecting a square wave into CF/CF1 | computed values match injected frequency |

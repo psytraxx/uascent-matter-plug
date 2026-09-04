@@ -9,16 +9,16 @@ LOG_MODULE_DECLARE(app, LOG_LEVEL_INF);
 namespace
 {
 /* xiao_ble devicetree: led0 = red, led1 = green, led2 = blue, all ACTIVE_LOW.
- * led3 is plug LED 1 (overlay alias -> plug_led_relay, P0.17); led4 is plug
- * LED 2 (overlay alias -> plug_led_network, D1/P0.03). Both plug LEDs are
- * assumed ACTIVE_LOW to match the on-board ones, pending independent
- * confirmation during tracing. GPIO_ACTIVE_LOW is encoded in the devicetree
- * flags, so gpio_pin_set() takes logical values here (1 = lit) and the
- * driver inverts as needed. */
+ * led4 is plug LED 2 (overlay alias -> plug_led_network, D1/P0.03), the only
+ * plug LED this firmware drives -- the plug's other LED sits on the relay
+ * drive net and follows the relay in hardware, so it needs no GPIO here (see
+ * the pad budget in boards/xiao_ble.overlay). It is assumed ACTIVE_LOW to
+ * match the on-board ones, pending independent confirmation.
+ * GPIO_ACTIVE_LOW is encoded in the devicetree flags, so gpio_pin_set() takes
+ * logical values here (1 = lit) and the driver inverts as needed. */
 const gpio_dt_spec sLedRed = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 const gpio_dt_spec sLedGreen = GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios);
 const gpio_dt_spec sLedBlue = GPIO_DT_SPEC_GET(DT_ALIAS(led2), gpios);
-const gpio_dt_spec sPlugLedRelay = GPIO_DT_SPEC_GET(DT_ALIAS(led3), gpios);
 const gpio_dt_spec sPlugLedNetwork = GPIO_DT_SPEC_GET(DT_ALIAS(led4), gpios);
 
 constexpr k_timeout_t kBlinkInterval = K_MSEC(500);
@@ -39,17 +39,6 @@ bool sBlinkOn;
 bool sRendered;
 
 k_timer sBlinkTimer;
-
-/* Renders the relay axis: plug LED 1, and the RGB's green channel (only
- * meaningful once network state is Paired -- see RenderRgb()). */
-void RenderRelay()
-{
-	if (!sInitialised) {
-		return;
-	}
-
-	gpio_pin_set_dt(&sPlugLedRelay, sRelayOn);
-}
 
 /* Renders the RGB's colour for the current (network, relay, blink phase)
  * combination. Red/blue are network-driven; green is relay-driven, but only
@@ -97,7 +86,7 @@ void BlinkTimerHandler(k_timer *)
 
 int StatusLedInit(void)
 {
-	const gpio_dt_spec *leds[] = { &sLedRed, &sLedGreen, &sLedBlue, &sPlugLedRelay, &sPlugLedNetwork };
+	const gpio_dt_spec *leds[] = { &sLedRed, &sLedGreen, &sLedBlue, &sPlugLedNetwork };
 
 	for (const gpio_dt_spec *led : leds) {
 		if (!gpio_is_ready_dt(led)) {
@@ -161,10 +150,11 @@ void StatusLedSetRelayState(bool relayOn)
 	}
 
 	sRelayOn = relayOn;
-	RenderRelay();
 
-	/* The RGB's green channel only shows once commissioning is out of the
-	 * way (see RenderRgb()); harmless to call unconditionally otherwise,
-	 * since RenderRgb() re-derives red/blue from sNetworkState too. */
+	/* The relay's own indicator LED is hardware-driven off the relay net,
+	 * so the only thing left to render here is the RGB's green channel --
+	 * which only shows once commissioning is out of the way (see
+	 * RenderRgb()); harmless to call unconditionally otherwise, since
+	 * RenderRgb() re-derives red/blue from sNetworkState too. */
 	RenderRgb();
 }
