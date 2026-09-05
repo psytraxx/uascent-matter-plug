@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="642" viewBox="0 0 980 642" font-family="ui-sans-serif,Segoe UI,Helvetica,Arial,sans-serif">
+<defs>
+<marker id="ar-pwr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#c0392b"/></marker>
+<marker id="ar-rly" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#c2410c"/></marker>
+<marker id="ar-gnd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4b5563"/></marker>
+<marker id="ar-ui" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#15803d"/></marker>
+<marker id="ar-mtr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1d4ed8"/></marker>
+<marker id="ar-na" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9ca3af"/></marker>
+</defs>
+<rect width="980" height="642" rx="10" fill="#fbfbf9"/>
+<text x="28" y="40" font-size="19" font-weight="700" fill="#111">Plug board  →  UAM023 11-pad footprint  →  XIAO nRF52840</text>
+<text x="28" y="62" font-size="13" fill="#666">Pads in physical order. Odd pins sit on the module’s bottom face, even pins on the top face.</text>
+<rect x="28" y="78" width="924" height="26" rx="5" fill="#fdeaea" stroke="#c0392b"/>
+<text x="42" y="96" font-size="12.5" font-weight="600" fill="#991b1b">⚠  The whole plug side is mains-referenced. The BL0937 provides no isolation, so every pad here can sit at mains potential.</text>
+<text x="300" y="128" font-size="13" font-weight="600" fill="#666" text-anchor="end">plug board net</text>
+<text x="470" y="128" font-size="13" font-weight="600" fill="#666" text-anchor="middle">header pad</text>
+<text x="640" y="128" font-size="13" font-weight="600" fill="#666">XIAO pad</text>
+<line x1="28" y1="136" x2="952" y2="136" stroke="#ddd"/>
+<rect x="28" y="146" width="924" height="40" fill="#00000006"/>
+<text x="300" y="171" font-size="14" fill="#111" text-anchor="end">AMS1117 3.3 V</text>
+<rect x="400" y="153" width="140" height="26" rx="5" fill="#fff" stroke="#c0392b" stroke-width="1.6"/>
+<text x="470" y="171" font-size="13.5" font-weight="600" fill="#c0392b" text-anchor="middle">H1 · 3V3</text>
+<text x="386" y="170" font-size="10" fill="#9ca3af" text-anchor="end">B</text>
+<text x="640" y="171" font-size="14" fill="#111">3.3V-OUT</text>
+<line x1="312" y1="166" x2="370" y2="166" stroke="#c0392b" stroke-width="2"/>
+<line x1="548" y1="166" x2="626" y2="166" stroke="#c0392b" stroke-width="2" marker-end="url(#ar-pwr)"/>
+<text x="300" y="211" font-size="14" fill="#111" text-anchor="end">relay coil  +  LED 1</text>
+<rect x="400" y="193" width="140" height="26" rx="5" fill="#fff" stroke="#c2410c" stroke-width="1.6"/>
+<text x="470" y="211" font-size="13.5" font-weight="600" fill="#c2410c" text-anchor="middle">H2 · P6</text>
+<text x="386" y="210" font-size="10" fill="#9ca3af" text-anchor="end">T</text>
+<text x="640" y="211" font-size="14" fill="#111">D5 · P0.05</text>
+<line x1="370" y1="206" x2="312" y2="206" stroke="#c2410c" stroke-width="2" marker-end="url(#ar-rly)"/>
+<line x1="626" y1="206" x2="548" y2="206" stroke="#c2410c" stroke-width="2"/>
+<rect x="28" y="226" width="924" height="40" fill="#00000006"/>
+<text x="300" y="251" font-size="14" fill="#111" text-anchor="end">ground pour</text>
+<rect x="400" y="233" width="140" height="26" rx="5" fill="#fff" stroke="#4b5563" stroke-width="1.6"/>
+<text x="470" y="251" font-size="13.5" font-weight="600" fill="#4b5563" text-anchor="middle">H3 · GND</text>
+<text x="386" y="250" font-size="10" fill="#9ca3af" text-anchor="end">B</text>
+<text x="640" y="251" font-size="14" fill="#111">GND</text>
+<line x1="312" y1="246" x2="370" y2="246" stroke="#4b5563" stroke-width="2"/>
+<line x1="548" y1="246" x2="626" y2="246" stroke="#4b5563" stroke-width="2"/>
+<text x="300" y="291" font-size="14" fill="#111" text-anchor="end">LED 2  (network state)</text>
+<rect x="400" y="273" width="140" height="26" rx="5" fill="#fff" stroke="#15803d" stroke-width="1.6"/>
+<text x="470" y="291" font-size="13.5" font-weight="600" fill="#15803d" text-anchor="middle">H4 · P7</text>
+<text x="386" y="290" font-size="10" fill="#9ca3af" text-anchor="end">T</text>
+<text x="640" y="291" font-size="14" fill="#111">D1 · P0.03</text>
+<line x1="370" y1="286" x2="312" y2="286" stroke="#15803d" stroke-width="2" marker-end="url(#ar-ui)"/>
+<line x1="626" y1="286" x2="548" y2="286" stroke="#15803d" stroke-width="2"/>
+<rect x="28" y="306" width="924" height="40" fill="#00000006"/>
+<text x="300" y="331" font-size="14" fill="#111" text-anchor="end">tactile button</text>
+<rect x="400" y="313" width="140" height="26" rx="5" fill="#fff" stroke="#15803d" stroke-width="1.6"/>
+<text x="470" y="331" font-size="13.5" font-weight="600" fill="#15803d" text-anchor="middle">H5 · RX1</text>
+<text x="386" y="330" font-size="10" fill="#9ca3af" text-anchor="end">B</text>
+<text x="640" y="331" font-size="14" fill="#111">D0 · P0.02</text>
+<line x1="312" y1="326" x2="370" y2="326" stroke="#15803d" stroke-width="2"/>
+<line x1="548" y1="326" x2="626" y2="326" stroke="#15803d" stroke-width="2" marker-end="url(#ar-ui)"/>
+<text x="300" y="371" font-size="14" fill="#111" text-anchor="end">BL0937 SEL</text>
+<rect x="400" y="353" width="140" height="26" rx="5" fill="#fff" stroke="#1d4ed8" stroke-width="1.6"/>
+<text x="470" y="371" font-size="13.5" font-weight="600" fill="#1d4ed8" text-anchor="middle">H6 · P8</text>
+<text x="386" y="370" font-size="10" fill="#9ca3af" text-anchor="end">T</text>
+<text x="640" y="371" font-size="14" fill="#111">D4 · P0.04</text>
+<line x1="370" y1="366" x2="312" y2="366" stroke="#1d4ed8" stroke-width="2" marker-end="url(#ar-mtr)"/>
+<line x1="626" y1="366" x2="548" y2="366" stroke="#1d4ed8" stroke-width="2"/>
+<rect x="28" y="386" width="924" height="40" fill="#00000006"/>
+<text x="300" y="411" font-size="14" fill="#9ca3af" text-anchor="end">not connected</text>
+<rect x="400" y="393" width="140" height="26" rx="5" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.6"/>
+<text x="470" y="411" font-size="13.5" font-weight="600" fill="#9ca3af" text-anchor="middle">H7 · TX1</text>
+<text x="386" y="410" font-size="10" fill="#9ca3af" text-anchor="end">B</text>
+<text x="640" y="411" font-size="14" fill="#9ca3af">—</text>
+<text x="300" y="451" font-size="14" fill="#9ca3af" text-anchor="end">not connected</text>
+<rect x="400" y="433" width="140" height="26" rx="5" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.6"/>
+<text x="470" y="451" font-size="13.5" font-weight="600" fill="#9ca3af" text-anchor="middle">H8 · ADC</text>
+<text x="386" y="450" font-size="10" fill="#9ca3af" text-anchor="end">T</text>
+<text x="640" y="451" font-size="14" fill="#9ca3af">—</text>
+<rect x="28" y="466" width="924" height="40" fill="#00000006"/>
+<text x="300" y="491" font-size="14" fill="#111" text-anchor="end">BL0937 CF</text>
+<rect x="400" y="473" width="140" height="26" rx="5" fill="#fff" stroke="#1d4ed8" stroke-width="1.6"/>
+<text x="470" y="491" font-size="13.5" font-weight="600" fill="#1d4ed8" text-anchor="middle">H9 · P24</text>
+<text x="386" y="490" font-size="10" fill="#9ca3af" text-anchor="end">B</text>
+<text x="640" y="491" font-size="14" fill="#111">D2 · P0.28</text>
+<line x1="312" y1="486" x2="370" y2="486" stroke="#1d4ed8" stroke-width="2"/>
+<line x1="548" y1="486" x2="626" y2="486" stroke="#1d4ed8" stroke-width="2" marker-end="url(#ar-mtr)"/>
+<text x="300" y="531" font-size="14" fill="#9ca3af" text-anchor="end">module reset (unused)</text>
+<rect x="400" y="513" width="140" height="26" rx="5" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.6"/>
+<text x="470" y="531" font-size="13.5" font-weight="600" fill="#9ca3af" text-anchor="middle">H10 · CEN</text>
+<text x="386" y="530" font-size="10" fill="#9ca3af" text-anchor="end">T</text>
+<text x="640" y="531" font-size="14" fill="#9ca3af">—</text>
+<rect x="28" y="546" width="924" height="40" fill="#00000006"/>
+<text x="300" y="571" font-size="14" fill="#111" text-anchor="end">BL0937 CF1</text>
+<rect x="400" y="553" width="140" height="26" rx="5" fill="#fff" stroke="#1d4ed8" stroke-width="1.6"/>
+<text x="470" y="571" font-size="13.5" font-weight="600" fill="#1d4ed8" text-anchor="middle">H11 · P26</text>
+<text x="386" y="570" font-size="10" fill="#9ca3af" text-anchor="end">B</text>
+<text x="640" y="571" font-size="14" fill="#111">D3 · P0.29</text>
+<line x1="312" y1="566" x2="370" y2="566" stroke="#1d4ed8" stroke-width="2"/>
+<line x1="548" y1="566" x2="626" y2="566" stroke="#1d4ed8" stroke-width="2" marker-end="url(#ar-mtr)"/>
+<line x1="28" y1="600" x2="952" y2="600" stroke="#ddd"/>
+<text x="28" y="620" font-size="12.5" fill="#555">Arrows show signal direction.  Grey rows are pads this design leaves unconnected.  T / B = top or bottom face of the module.</text>
+</svg>
