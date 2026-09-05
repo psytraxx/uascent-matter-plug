@@ -79,7 +79,13 @@ and everything under `src/default_zap/zap-generated/` are hand-maintained
 against the ZCL XML in
 `modules/lib/matter/src/app/zap-templates/zcl/data-model/chip/`. Note the
 build's `codegen.py` step parses the `.matter` IDL file, not the `.zap`, so
-the `.matter` cluster definitions must stay complete and consistent.
+the `.matter` cluster definitions must stay complete and consistent. The
+`.zap` is not just documentation, though: `chip_configure_zap_file()`
+(`modules/lib/matter/src/app/chip_data_model.cmake`) runs
+`zap_cluster_list.py --zap_file` against it to decide which cluster
+*source files* get compiled in, keyed off each cluster's `"enabled": 1`. A
+cluster added to `.matter`/`endpoint_config.h` but not enabled in the `.zap`
+will not have its server implementation built at all.
 
 Three board constraints follow from the UF2 flash map having no
 `slot0_partition`, and each has to be disabled in a particular way:

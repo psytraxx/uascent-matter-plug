@@ -2,14 +2,18 @@
  * ElectricalPowerMeasurement (0x0090) and ElectricalEnergyMeasurement
  * (0x0091) server wiring for endpoint 1.
  *
- * EPM uses the Delegate/Instance pattern (a real object this app owns);
- * EEM uses free functions over a singleton the cluster server owns
- * internally, indexed by endpoint -- there is no delegate to write, just
- * SetMeasurementAccuracy()/NotifyCumulativeEnergyMeasured() calls. See
- * modules/lib/matter/src/app/clusters/electrical-energy-measurement-server/
- * ElectricalEnergyMeasurementCluster.h for that shape; it looks asymmetric
- * with EPM's Delegate because it is -- two different NCS-vendored
- * implementations, not a design choice made here.
+ * Both clusters use an AttributeAccessInterface this app constructs and
+ * registers itself: EPM's is the Delegate/Instance pattern, EEM's is
+ * ElectricalEnergyMeasurementAttrAccess plus free functions
+ * (SetMeasurementAccuracy()/NotifyCumulativeEnergyMeasured()) that reach it
+ * through a singleton keyed by endpoint. Neither self-registers -- the SDK's
+ * reference app (modules/lib/matter/examples/energy-management-app/
+ * energy-management-common/common/src/EnergyManagementAppCommonMain.cpp)
+ * constructs and Init()s the EEM AAI the same way PowerMeasurementInit()
+ * does here. Skipping that step compiles and boots fine; it just leaves EEM
+ * reads falling through to the SDK's weak emberAfExternalAttributeReadCallback
+ * stub, which returns Status::Failure for every attribute the cluster claims
+ * to serve externally.
  */
 
 #pragma once
@@ -21,9 +25,14 @@
 
 CHIP_ERROR PowerMeasurementInit(chip::EndpointId endpoint);
 
-/* Pushes one reading into both clusters: EPM's attributes directly (no
- * change-detection -- Matter's reporting engine handles that), and EEM's
- * cumulative energy by integrating activePowerMw over the elapsed time since
- * the previous call. First call after init only primes the integrator; it
- * reports zero elapsed energy. */
+/* Pushes one reading into both clusters: EPM's attributes through the
+ * delegate, dirty-marked only when they move past a deadband (see
+ * ReportIfMoved() in the .cpp); and EEM's cumulative energy by integrating
+ * activePowerMw over the elapsed time since the previous call, also
+ * dirty-marked on every call that reports. First call after init only primes
+ * the integrator; it reports zero elapsed energy.
+ *
+ * The cumulative energy total is also periodically written to the KVS (see
+ * PersistCumulativeEnergyIfDue() in the .cpp) so it survives a reboot; this
+ * function's caller does not need to do anything for that to happen. */
 void PowerMeasurementUpdate(int64_t activePowerMw, int64_t rmsVoltageMv, int64_t rmsCurrentMa);

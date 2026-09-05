@@ -2,12 +2,14 @@
 
 #include <app-common/zap-generated/cluster-objects.h>
 #include <app/AttributeAccessInterface.h>
+#include <app/clusters/electrical-energy-measurement-server/ElectricalEnergyMeasurementCluster.h>
 #include <app/clusters/electrical-energy-measurement-server/electrical-energy-measurement-server.h>
 #include <app/clusters/electrical-power-measurement-server/electrical-power-measurement-server.h>
 #include <app/reporting/reporting.h>
 #include <app/server/Server.h>
 #include <app/util/attribute-storage.h>
 #include <lib/support/BitMask.h>
+#include <platform/KeyValueStoreManager.h>
 
 #include <zephyr/logging/log.h>
 
@@ -150,6 +152,7 @@ private:
 
 std::unique_ptr<PlugPowerDelegate> sDelegate;
 std::unique_ptr<Instance> sInstance;
+std::unique_ptr<ElectricalEnergyMeasurement::ElectricalEnergyMeasurementAttrAccess> sEnergyAttrAccess;
 
 EndpointId sEndpoint;
 bool sHaveLastSample;
@@ -162,6 +165,72 @@ int64_t sLastReportMs;
  * rate exists to keep EPM's power attributes responsive, while EEM only needs
  * enough resolution to track consumption over time. */
 constexpr int64_t kEnergyReportIntervalMs = 60'000;
+
+/* sCumulativeEnergyMwh is otherwise a RAM-only running total that resets to
+ * zero on every reboot -- not acceptable for an attribute the spec expects
+ * to be monotonic across the device's life. Persisted through the Matter
+ * stack's own KeyValueStoreMgr(), which on this board is backed by Zephyr's
+ * settings/NVS partition -- no separate storage handler is set up here.
+ *
+ * Writing on every energy report (kEnergyReportIntervalMs, 60 s) would be
+ * ~1440 flash writes/day; NVS wear-levels but that is still worth bounding.
+ * Instead write when the accumulated delta since the last write passes
+ * kEnergyPersistThresholdMwh *and* at least kEnergyPersistMinIntervalMs has
+ * elapsed, or unconditionally once kEnergyPersistMaxIntervalMs has elapsed
+ * with any nonzero delta. The threshold+min-interval pair caps the worst
+ * case (continuous full-rating draw) at a little over 2 writes/hour; the
+ * max-interval floor bounds staleness for a plug drawing only a trickle.
+ * Energy lost to a hard power cut is bounded by
+ * max(kEnergyPersistThresholdMwh, kEnergyPersistMinIntervalMs at the
+ * current power) -- this board has no brown-out hold-up budget to do
+ * better than that. */
+constexpr char kEnergyKvsKey[] = "uam-plug/cum-energy-mwh";
+constexpr int64_t kEnergyPersistThresholdMwh = 100'000; /* 100 Wh */
+constexpr int64_t kEnergyPersistMinIntervalMs = 600'000; /* 10 min */
+constexpr int64_t kEnergyPersistMaxIntervalMs = 21'600'000; /* 6 h */
+
+int64_t sLastPersistedEnergyMwh;
+int64_t sLastPersistMs;
+
+void LoadCumulativeEnergy()
+{
+	int64_t stored = 0;
+	CHIP_ERROR err = chip::DeviceLayer::PersistedStorage::KeyValueStoreMgr().Get(kEnergyKvsKey, &stored);
+	if (err == CHIP_NO_ERROR && stored > 0) {
+		sCumulativeEnergyMwh = stored;
+	}
+	/* CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND on first boot, or a
+	 * negative/corrupt read, both leave sCumulativeEnergyMwh at its
+	 * zero-initialised default -- monotonicity matters more here than
+	 * salvaging a damaged value. */
+	sLastPersistedEnergyMwh = sCumulativeEnergyMwh;
+}
+
+void PersistCumulativeEnergyIfDue(int64_t nowMs)
+{
+	const int64_t deltaMwh = sCumulativeEnergyMwh - sLastPersistedEnergyMwh;
+	if (deltaMwh <= 0) {
+		return;
+	}
+
+	const int64_t sincePersistMs = nowMs - sLastPersistMs;
+	const bool thresholdDue =
+		deltaMwh >= kEnergyPersistThresholdMwh && sincePersistMs >= kEnergyPersistMinIntervalMs;
+	const bool maxIntervalDue = sincePersistMs >= kEnergyPersistMaxIntervalMs;
+	if (!thresholdDue && !maxIntervalDue) {
+		return;
+	}
+
+	CHIP_ERROR err =
+		chip::DeviceLayer::PersistedStorage::KeyValueStoreMgr().Put(kEnergyKvsKey, sCumulativeEnergyMwh);
+	if (err != CHIP_NO_ERROR) {
+		LOG_ERR("Failed to persist cumulative energy: %" CHIP_ERROR_FORMAT, err.Format());
+		return;
+	}
+
+	sLastPersistedEnergyMwh = sCumulativeEnergyMwh;
+	sLastPersistMs = nowMs;
+}
 
 /* Storing a value in the delegate does not tell subscribers anything -- the
  * cluster only reads it when something marks the attribute dirty. Without
@@ -223,22 +292,47 @@ CHIP_ERROR PowerMeasurementInit(EndpointId endpoint)
 		return err;
 	}
 
-	/* EEM has no Delegate to construct: it is a singleton the cluster server
-	 * owns internally (indexed by endpoint via
-	 * emberAfGetClusterServerEndpointIndex()), already registered through
-	 * endpoint_config.h's cluster table. Only the accuracy needs setting
-	 * once; readings arrive later purely through
-	 * NotifyCumulativeEnergyMeasured(). */
+	/* EEM's AttributeAccessInterface is not self-registering: unlike EPM's
+	 * Instance above, nothing in the SDK constructs or Init()s it for us.
+	 * Skipping this compiles and boots fine -- the failure is silent until
+	 * something reads CumulativeEnergyImported and gets Status::Failure from
+	 * the weak emberAfExternalAttributeReadCallback stub
+	 * (modules/lib/matter/src/app/util/generic-callback-stubs.cpp). Feature
+	 * bits: only kImportedEnergy | kCumulativeEnergy (0x05) -- the endpoint
+	 * neither exports nor reports periodically, and declaring kExportedEnergy
+	 * or kPeriodicEnergy would make CumulativeEnergyExported /
+	 * PeriodicEnergyImported mandatory attributes this endpoint doesn't have,
+	 * which is a conformance failure, not just an unused feature bit. */
+	sEnergyAttrAccess = std::make_unique<ElectricalEnergyMeasurement::ElectricalEnergyMeasurementAttrAccess>(
+		BitMask<ElectricalEnergyMeasurement::Feature>(ElectricalEnergyMeasurement::Feature::kImportedEnergy,
+							       ElectricalEnergyMeasurement::Feature::kCumulativeEnergy),
+		BitMask<ElectricalEnergyMeasurement::OptionalAttributes>(0));
+
+	err = sEnergyAttrAccess->Init();
+	if (err != CHIP_NO_ERROR) {
+		LOG_ERR("EEM AttrAccess init failed: %" CHIP_ERROR_FORMAT, err.Format());
+		sEnergyAttrAccess.reset();
+		return err;
+	}
+
+	/* Accuracy is set once at init; readings arrive later purely through
+	 * NotifyCumulativeEnergyMeasured(). measurementType is kElectricalEnergy
+	 * here -- this is the *energy* cluster's accuracy entry, not power's, and
+	 * min/maxMeasuredValue/rangeMax are an energy bound in mWh, not the
+	 * 3'680'000 mW power ceiling EPM uses for the same numeral. A round
+	 * 10-year figure at the plug's full rating (3.68 kW * 24 h * 365 d * 10)
+	 * is used as a plausible span, same placeholder status as EPM's
+	 * percentMax -- see the comment on kFivePercent above. */
 	static const ElectricalEnergyMeasurement::Structs::MeasurementAccuracyRangeStruct::Type kEnergyRanges[] = { {
 		.rangeMin = 0,
-		.rangeMax = 3'680'000,
+		.rangeMax = 322'368'000'000,
 		.percentMax = MakeOptional(static_cast<chip::Percent100ths>(500)),
 	} };
 	ElectricalEnergyMeasurement::Structs::MeasurementAccuracyStruct::Type energyAccuracy;
-	energyAccuracy.measurementType = MeasurementTypeEnum::kActivePower;
+	energyAccuracy.measurementType = MeasurementTypeEnum::kElectricalEnergy;
 	energyAccuracy.measured = true;
 	energyAccuracy.minMeasuredValue = 0;
-	energyAccuracy.maxMeasuredValue = 3'680'000;
+	energyAccuracy.maxMeasuredValue = 322'368'000'000;
 	energyAccuracy.accuracyRanges =
 		DataModel::List<const ElectricalEnergyMeasurement::Structs::MeasurementAccuracyRangeStruct::Type>(
 			kEnergyRanges);
@@ -246,8 +340,11 @@ CHIP_ERROR PowerMeasurementInit(EndpointId endpoint)
 	err = ElectricalEnergyMeasurement::SetMeasurementAccuracy(endpoint, energyAccuracy);
 	if (err != CHIP_NO_ERROR) {
 		LOG_ERR("EEM accuracy set failed: %" CHIP_ERROR_FORMAT, err.Format());
+		sEnergyAttrAccess.reset();
 		return err;
 	}
+
+	LoadCumulativeEnergy();
 
 	return CHIP_NO_ERROR;
 }
@@ -282,6 +379,8 @@ void PowerMeasurementUpdate(int64_t activePowerMw, int64_t rmsVoltageMv, int64_t
 		 * higher-power or much-less-frequently-polled design. */
 		sCumulativeEnergyMwh += (avgPowerMw * elapsedMs) / 3'600'000;
 
+		PersistCumulativeEnergyIfDue(nowMs);
+
 		/* Accumulation above is unconditional so the running total stays
 		 * correct, but the event is only worth generating when someone
 		 * can receive it. Each Notify call writes an entry to the event
@@ -296,6 +395,16 @@ void PowerMeasurementUpdate(int64_t activePowerMw, int64_t rmsVoltageMv, int64_t
 			imported.energy = sCumulativeEnergyMwh;
 			ElectricalEnergyMeasurement::NotifyCumulativeEnergyMeasured(
 				sEndpoint, MakeOptional(imported), NullOptional);
+			/* NotifyCumulativeEnergyMeasured() only logs the
+			 * CumulativeEnergyMeasured event -- it does not mark the
+			 * CumulativeEnergyImported attribute dirty (contrast
+			 * SetMeasurementAccuracy(), which does call
+			 * MatterReportingAttributeChangeCallback() itself). Without this,
+			 * an attribute subscriber sees no report until its own max
+			 * interval, the same gap f8299ba closed for EPM. */
+			MatterReportingAttributeChangeCallback(
+				sEndpoint, ElectricalEnergyMeasurement::Id,
+				ElectricalEnergyMeasurement::Attributes::CumulativeEnergyImported::Id);
 			sLastReportMs = nowMs;
 		}
 	}
