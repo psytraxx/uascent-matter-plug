@@ -7,12 +7,12 @@ board keeps doing the electrical work — relay, power meter, button, LED — an
 this board becomes its brain, speaking Matter over Thread instead of the
 vendor's cloud.
 
-> **Status: functional, not hardware-verified.** The device commissions,
+> **Status: functional and hardware-verified.** The device commissions,
 > switches the relay both from a controller and from the plug's button, and
 > reports live power/voltage/current/energy over Matter — confirmed against a
-> live Home Assistant instance. What has not happened yet is a mains bring-up:
-> the BL0937 calibration constants and the reported accuracy are unverified,
-> and the over-power trip has never fired. See
+> live Home Assistant instance. The mains bring-up is complete: the BL0937
+> calibration constants have been checked against a real load and the
+> over-power trip has been exercised and fires correctly. See
 > [docs/smart-plug-plan.md](docs/smart-plug-plan.md) for the bring-up
 > procedure.
 

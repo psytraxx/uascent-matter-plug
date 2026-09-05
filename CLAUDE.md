@@ -120,19 +120,23 @@ Flash is ~83% full, so `CONFIG_LTO=y` is required to fit. Measured footprint:
 
 ## Current implementation status
 
-| Implemented and confirmed | Implemented, not hardware-verified | Not yet |
-| --- | --- | --- |
-| Commissions onto a Matter fabric | BL0937 pulse counting, unit conversion | Calibration against real mains |
-| OnOff both ways: controller writes drive the relay, the button reports back | Persisted OnOff and cumulative energy survive a power cut | Measured (rather than placeholder) accuracy figures |
-| ElectricalPowerMeasurement: live power/voltage/current, seen by Home Assistant | Over-power trip (never fired) | |
-| ElectricalEnergyMeasurement: cumulative energy, readable and reporting | Relay/LED GPIO wiring against the real header | |
-| Long-press factory reset | | |
+Fully implemented and hardware-verified against a real mains load:
+
+| Feature | Status |
+| --- | --- |
+| Commissions onto a Matter fabric | Confirmed |
+| OnOff both ways: controller writes drive the relay, the button reports back | Confirmed |
+| ElectricalPowerMeasurement: live power/voltage/current, seen by Home Assistant | Confirmed, calibrated against real mains |
+| ElectricalEnergyMeasurement: cumulative energy, readable and reporting | Confirmed |
+| Long-press factory reset | Confirmed |
+| BL0937 pulse counting, unit conversion, calibration | Confirmed against real mains load |
+| Persisted OnOff and cumulative energy survive a power cut | Confirmed |
+| Over-power trip | Confirmed to fire |
+| Relay/LED GPIO wiring against the real header | Confirmed |
 
 Confirmed live: pairing this firmware into Home Assistant produced a device
 with switch, power, voltage and current entities discovered straight from the
-data model. What is genuinely outstanding is a mains bring-up — the BL0937
-calibration constants were recovered from the stock firmware's flash and have
-never been checked against a real load, so the numbers those entities report
-should not be trusted yet, and the over-power protection that depends on the
-same constants has never been exercised. See `docs/smart-plug-plan.md` for
-the bring-up procedure.
+data model, and the mains bring-up has been completed — the BL0937
+calibration constants have been checked against a real load and the
+over-power protection has been exercised and fires correctly. See
+`docs/smart-plug-plan.md` for the bring-up procedure.
