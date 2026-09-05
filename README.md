@@ -25,34 +25,49 @@ except real power readings works that way. See
 
 ## Hardware
 
-| Signal | XIAO pad | Purpose |
-| --- | --- | --- |
-| Button | D0 | Short press = toggle relay, long press (3 s) = factory reset |
-| Relay | D6 | Switches the load |
-| Plug LED 1 | P0.17 | The plug's own LED, tracks relay state |
-| Plug LED 2 | D1 | The plug's second LED, tracks network/commissioning state |
-| BL0937 CF | D2 | Power pulses from the meter chip |
-| BL0937 CF1 | D3 | Voltage/current pulses |
-| BL0937 SEL | D4 | Selects which of the two CF1 reports |
+The XIAO solders to the 11-pad card-edge header the UAM023 Wi-Fi module used
+to plug into. Header pad **H*n*** is UAM023 **pin *n***.
 
-**These pin choices are provisional.** The plug's board has not been traced
-yet, so they are guesses that are electrically sensible. They live in
-`boards/xiao_ble.overlay` — correcting them is a one-file
-change, no code edits. Full rationale in
+| Signal | Header pad | XIAO pad | Purpose |
+| --- | --- | --- | --- |
+| Button | H5 (RX1) | D0 | Short press = toggle relay, long press (3 s) = factory reset |
+| Plug LED 2 | H4 (P7) | D1 | Network/commissioning state |
+| BL0937 CF | H9 (P24) | D2 | Active-power pulses from the meter chip |
+| BL0937 CF1 | H11 (P26) | D3 | Voltage/current pulses |
+| BL0937 SEL | H6 (P8) | D4 | Selects which of the two CF1 reports |
+| Relay | H2 (P6) | D5 | Switches the load (plug LED 1 sits on this net) |
+| 3.3 V | H1 | 3.3V-OUT | Power |
+| GND | H3 | GND | Ground |
+
+The pad mapping is traced and firmware-confirmed
+([docs/original-pcb-trace.md](docs/original-pcb-trace.md)); the *XIAO-side*
+choices are ours, since the two boards are joined by hand. They live in
+`boards/xiao_ble.overlay` — changing them is a one-file change, no code
+edits. Full rationale in
 [docs/smart-plug-plan.md](docs/smart-plug-plan.md).
+
+### Wiring
+
+![Wiring: plug board to UAM023 footprint to XIAO nRF52840](docs/wiring.svg)
+
+Because nothing on that side is isolated, the XIAO and its USB ground are
+DC-coupled to mains once the plug is energised — which is why USB and mains
+must never be connected at the same time. See
+[Mains safety](#-mains-safety) above.
 
 ### LEDs
 
 The plug's board has two LEDs, each tracking one thing, plus the XIAO's own
 on-board RGB as a debug mirror. Commissioning state never competes with
-relay state because they're on separate LEDs.
+relay state because they're on separate LEDs. Only LED 2 is software-driven —
+LED 1 sits on the relay drive net and follows it in hardware.
 
-| Situation | Plug LED 1 (relay) | Plug LED 2 (network) | Board's RGB LED |
+| Situation | Plug LED 1 (relay net) | Plug LED 2 (network) | Board's RGB LED |
 | --- | --- | --- | --- |
 | Pairing mode | mirrors relay | blinking | blue, blinking |
 | Paired, load on | on | off | green |
 | Paired, load off | off | off | off |
-| Fault | fast blink | fast blink | red, fast blink |
+| Fault | mirrors relay | fast blink | red, fast blink |
 
 ## Prerequisites
 
