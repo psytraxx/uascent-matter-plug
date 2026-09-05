@@ -2,6 +2,7 @@
 
 #include <app-common/zap-generated/cluster-objects.h>
 #include <app/AttributeAccessInterface.h>
+#include <app/clusters/electrical-energy-measurement-server/ElectricalEnergyMeasurementCluster.h>
 #include <app/clusters/electrical-energy-measurement-server/electrical-energy-measurement-server.h>
 #include <app/clusters/electrical-power-measurement-server/electrical-power-measurement-server.h>
 #include <app/reporting/reporting.h>
@@ -150,6 +151,7 @@ private:
 
 std::unique_ptr<PlugPowerDelegate> sDelegate;
 std::unique_ptr<Instance> sInstance;
+std::unique_ptr<ElectricalEnergyMeasurement::ElectricalEnergyMeasurementAttrAccess> sEnergyAttrAccess;
 
 EndpointId sEndpoint;
 bool sHaveLastSample;
@@ -223,22 +225,47 @@ CHIP_ERROR PowerMeasurementInit(EndpointId endpoint)
 		return err;
 	}
 
-	/* EEM has no Delegate to construct: it is a singleton the cluster server
-	 * owns internally (indexed by endpoint via
-	 * emberAfGetClusterServerEndpointIndex()), already registered through
-	 * endpoint_config.h's cluster table. Only the accuracy needs setting
-	 * once; readings arrive later purely through
-	 * NotifyCumulativeEnergyMeasured(). */
+	/* EEM's AttributeAccessInterface is not self-registering: unlike EPM's
+	 * Instance above, nothing in the SDK constructs or Init()s it for us.
+	 * Skipping this compiles and boots fine -- the failure is silent until
+	 * something reads CumulativeEnergyImported and gets Status::Failure from
+	 * the weak emberAfExternalAttributeReadCallback stub
+	 * (modules/lib/matter/src/app/util/generic-callback-stubs.cpp). Feature
+	 * bits: only kImportedEnergy | kCumulativeEnergy (0x05) -- the endpoint
+	 * neither exports nor reports periodically, and declaring kExportedEnergy
+	 * or kPeriodicEnergy would make CumulativeEnergyExported /
+	 * PeriodicEnergyImported mandatory attributes this endpoint doesn't have,
+	 * which is a conformance failure, not just an unused feature bit. */
+	sEnergyAttrAccess = std::make_unique<ElectricalEnergyMeasurement::ElectricalEnergyMeasurementAttrAccess>(
+		BitMask<ElectricalEnergyMeasurement::Feature>(ElectricalEnergyMeasurement::Feature::kImportedEnergy,
+							       ElectricalEnergyMeasurement::Feature::kCumulativeEnergy),
+		BitMask<ElectricalEnergyMeasurement::OptionalAttributes>(0));
+
+	err = sEnergyAttrAccess->Init();
+	if (err != CHIP_NO_ERROR) {
+		LOG_ERR("EEM AttrAccess init failed: %" CHIP_ERROR_FORMAT, err.Format());
+		sEnergyAttrAccess.reset();
+		return err;
+	}
+
+	/* Accuracy is set once at init; readings arrive later purely through
+	 * NotifyCumulativeEnergyMeasured(). measurementType is kElectricalEnergy
+	 * here -- this is the *energy* cluster's accuracy entry, not power's, and
+	 * min/maxMeasuredValue/rangeMax are an energy bound in mWh, not the
+	 * 3'680'000 mW power ceiling EPM uses for the same numeral. A round
+	 * 10-year figure at the plug's full rating (3.68 kW * 24 h * 365 d * 10)
+	 * is used as a plausible span, same placeholder status as EPM's
+	 * percentMax -- see the comment on kFivePercent above. */
 	static const ElectricalEnergyMeasurement::Structs::MeasurementAccuracyRangeStruct::Type kEnergyRanges[] = { {
 		.rangeMin = 0,
-		.rangeMax = 3'680'000,
+		.rangeMax = 322'368'000'000,
 		.percentMax = MakeOptional(static_cast<chip::Percent100ths>(500)),
 	} };
 	ElectricalEnergyMeasurement::Structs::MeasurementAccuracyStruct::Type energyAccuracy;
-	energyAccuracy.measurementType = MeasurementTypeEnum::kActivePower;
+	energyAccuracy.measurementType = MeasurementTypeEnum::kElectricalEnergy;
 	energyAccuracy.measured = true;
 	energyAccuracy.minMeasuredValue = 0;
-	energyAccuracy.maxMeasuredValue = 3'680'000;
+	energyAccuracy.maxMeasuredValue = 322'368'000'000;
 	energyAccuracy.accuracyRanges =
 		DataModel::List<const ElectricalEnergyMeasurement::Structs::MeasurementAccuracyRangeStruct::Type>(
 			kEnergyRanges);
@@ -246,6 +273,7 @@ CHIP_ERROR PowerMeasurementInit(EndpointId endpoint)
 	err = ElectricalEnergyMeasurement::SetMeasurementAccuracy(endpoint, energyAccuracy);
 	if (err != CHIP_NO_ERROR) {
 		LOG_ERR("EEM accuracy set failed: %" CHIP_ERROR_FORMAT, err.Format());
+		sEnergyAttrAccess.reset();
 		return err;
 	}
 
@@ -296,6 +324,16 @@ void PowerMeasurementUpdate(int64_t activePowerMw, int64_t rmsVoltageMv, int64_t
 			imported.energy = sCumulativeEnergyMwh;
 			ElectricalEnergyMeasurement::NotifyCumulativeEnergyMeasured(
 				sEndpoint, MakeOptional(imported), NullOptional);
+			/* NotifyCumulativeEnergyMeasured() only logs the
+			 * CumulativeEnergyMeasured event -- it does not mark the
+			 * CumulativeEnergyImported attribute dirty (contrast
+			 * SetMeasurementAccuracy(), which does call
+			 * MatterReportingAttributeChangeCallback() itself). Without this,
+			 * an attribute subscriber sees no report until its own max
+			 * interval, the same gap f8299ba closed for EPM. */
+			MatterReportingAttributeChangeCallback(
+				sEndpoint, ElectricalEnergyMeasurement::Id,
+				ElectricalEnergyMeasurement::Attributes::CumulativeEnergyImported::Id);
 			sLastReportMs = nowMs;
 		}
 	}
