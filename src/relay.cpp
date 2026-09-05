@@ -28,9 +28,10 @@ int RelayInit(void)
 	}
 
 	/* GPIO_OUTPUT_INACTIVE honours the devicetree polarity, so the relay
-	 * starts open regardless of how the driver stage is wired. Matter's
-	 * StartUpOnOff attribute may switch it on shortly after, once the
-	 * stack has restored persisted state. */
+	 * starts open regardless of how the driver stage is wired.
+	 * emberAfOnOffClusterInitCallback() (zcl_callbacks.cpp) may switch it
+	 * back on shortly after, once the stack has restored the persisted
+	 * OnOff attribute. */
 	const int err = gpio_pin_configure_dt(&sRelay, GPIO_OUTPUT_INACTIVE);
 	if (err) {
 		LOG_ERR("Failed to configure relay pin %u (%d)", sRelay.pin, err);

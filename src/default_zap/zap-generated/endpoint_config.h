@@ -530,7 +530,7 @@
                                                                                                                                       \
 			/* Endpoint: 1, Cluster: On/Off (server) */                                                                   \
 			{ ZAP_SIMPLE_DEFAULT(0), 0x00000000, 1, ZAP_TYPE(BOOLEAN),                                                    \
-			  ZAP_ATTRIBUTE_MASK(READABLE) }, /* OnOff */                                                                 \
+			  ZAP_ATTRIBUTE_MASK(TOKENIZE) | ZAP_ATTRIBUTE_MASK(READABLE) }, /* OnOff */                                 \
 			{ ZAP_SIMPLE_DEFAULT(0), 0x0000FFFC, 4, ZAP_TYPE(BITMAP32),                                                   \
 			  ZAP_ATTRIBUTE_MASK(READABLE) }, /* FeatureMap */                                                            \
 			{ ZAP_SIMPLE_DEFAULT(5), 0x0000FFFD, 2, ZAP_TYPE(INT16U),                                                     \

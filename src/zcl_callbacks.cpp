@@ -2,8 +2,11 @@
  * Bridges the OnOff cluster to the physical relay: attribute writes (from a
  * controller, or from AppTask::UpdateClusterState() after a button press)
  * drive RelaySet(), and boot-time restore reads the persisted attribute back
- * so the relay's power-on state matches StartUpOnOff. See "Phase 2" in
- * docs/smart-plug-plan.md.
+ * so the relay comes back on power-up in whatever state it was last left in.
+ * The OnOff attribute is declared "persist" in smart_plug.matter, which is
+ * what makes there be a value worth reading back here -- this is not
+ * StartUpOnOff, which is a separate, OnOff-Lighting-feature-gated attribute
+ * this endpoint does not declare. See "Phase 2" in docs/smart-plug-plan.md.
  */
 
 #include "relay.h"
@@ -37,11 +40,11 @@ void MatterPostAttributeChangeCallback(const chip::app::ConcreteAttributePath &a
 }
 
 /* Runs once per endpoint, before the button/controller can write OnOff, and
- * after the persisted attribute has loaded -- this is where StartUpOnOff
- * takes effect for the physical relay. See the TODO on the upstream
- * declaration (samples/matter/light_bulb/src/zcl_callbacks.cpp) about this
- * firing before default-value initialization; reading back Attributes::OnOff
- * here rather than assuming "off" sidesteps that. */
+ * after the persisted attribute has loaded -- this is where the relay picks
+ * up whatever OnOff value survived the last power cut. See the TODO on the
+ * upstream declaration (samples/matter/light_bulb/src/zcl_callbacks.cpp)
+ * about this firing before default-value initialization; reading back
+ * Attributes::OnOff here rather than assuming "off" sidesteps that. */
 void emberAfOnOffClusterInitCallback(EndpointId endpoint)
 {
 	bool storedValue = false;

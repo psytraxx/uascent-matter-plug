@@ -287,10 +287,14 @@ cosmetic. Revisit before this goes further than one prototype.
 
 **New `src/relay.cpp` / `.h`** — thin GPIO wrapper over a devicetree node, following
 the structure of the existing `src/status_led.cpp` (init returning errno, a `Set()`
-that is safe to call repeatedly). Keep the relay's power-on default **off**, and
-consider whether the plug should restore its last state across reboots — Matter's
-`StartUpOnOff` attribute covers this and needs settings/NVS persistence, which is
-already available since the Matter stack uses it.
+that is safe to call repeatedly). The GPIO itself always starts inactive (relay
+open) at `RelayInit()`; the plug restores its last state across reboots by
+persisting the OnOff attribute itself (`persist attribute onOff` in
+`smart_plug.matter`, backed by the Matter stack's own settings/NVS-backed
+`AttributePersistenceProvider`) rather than by adding Matter's `StartUpOnOff`
+attribute — that attribute is gated on the OnOff cluster's Lighting feature, which
+this endpoint does not declare and does not want (it pulls in mandatory attributes
+and commands that describe a lighting device, not a plug).
 
 **New `src/zcl_callbacks.cpp`** — implements `MatterPostAttributeChangeCallback`; on
 `OnOff::Attributes::OnOff` writes to endpoint 1, calls `Relay::Set()`.
@@ -588,7 +592,7 @@ no mains until the firmware is proven on the bench.
 | **B** | **Measure flash + RAM.** `arm-zephyr-eabi-size build/uascent-matter/zephyr/zephyr.elf` | ✅ done — 670 KB / 183 KB after Step A |
 | **C** | Phase 4 clusters wired to a **fake meter** — a stub emitting a synthetic ramp instead of BL0937 data | ✅ **done — the gate passed.** `src/meter_stub.cpp` (behind `CONFIG_APP_METER_STUB`) feeds `src/power_measurement.cpp`'s real EPM `Delegate`/`Instance` and EEM's `SetMeasurementAccuracy`/`NotifyCumulativeEnergyMeasured`. Full clusters, TLV encoders, and reporting engine linked and building. |
 | **D** | **Re-measure.** This is the true worst case — all clusters and TLV encoders linked in | ✅ **675,184 B flash (83.7%), 183,444 B RAM (70.0%).** ~113 KB flash / ~77 KB RAM free — fits with margin, no fallback levers needed. |
-| **E** | Phase 2 relay + button + LED indication, on bare XIAO with an LED on the relay pad | ⏳ **code done for the two-LED split, not yet verified on hardware.** `src/zcl_callbacks.cpp` bridges the OnOff cluster to `RelaySet()`/`StatusLedSetRelayState()` both ways: `MatterPostAttributeChangeCallback` for controller writes, `emberAfOnOffClusterInitCallback` to restore `StartUpOnOff` at boot. The button handler (`src/app_task.cpp`) toggles the relay and reports it through `AppTask::UpdateClusterState()`. `status_led.cpp` drives plug LED 2 (network, D1); plug LED 1 follows the relay in hardware off the H2 net, so it needs no GPIO and no precedence logic. Builds clean: 665,872 B flash (82.5%), 183,124 B RAM (69.9%). Remaining: press the button on real hardware and confirm the relay GPIO on D5/H2, both plug LEDs, and the reported attribute all agree. |
+| **E** | Phase 2 relay + button + LED indication, on bare XIAO with an LED on the relay pad | ⏳ **code done for the two-LED split, not yet verified on hardware.** `src/zcl_callbacks.cpp` bridges the OnOff cluster to `RelaySet()`/`StatusLedSetRelayState()` both ways: `MatterPostAttributeChangeCallback` for controller writes, `emberAfOnOffClusterInitCallback` to restore the persisted OnOff attribute at boot. The button handler (`src/app_task.cpp`) toggles the relay and reports it through `AppTask::UpdateClusterState()`. `status_led.cpp` drives plug LED 2 (network, D1); plug LED 1 follows the relay in hardware off the H2 net, so it needs no GPIO and no precedence logic. Builds clean: 665,872 B flash (82.5%), 183,124 B RAM (69.9%). Remaining: press the button on real hardware and confirm the relay GPIO on D5/H2, both plug LEDs, and the reported attribute all agree. |
 | **F** | Phase 0 tracing → fill `plug-pinout.md` → update overlay | pins CONFIRMED |
 | **G** | **Solder into plug, power via USB, no mains.** Full functional test: relay drive, button, LEDs, commissioning | everything but real readings works |
 | **H** | Phase 3 BL0937 driver, validated by injecting a square wave into CF/CF1 | computed values match injected frequency |
