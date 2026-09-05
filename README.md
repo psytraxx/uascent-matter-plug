@@ -84,6 +84,10 @@ The donor plug before and during conversion:
 | ![Desoldered UAM023 module](docs/desoldered-original-mcu.jpg) The UAM023 Wi-Fi module desoldered from the header the XIAO now plugs into | ![Reading the stock firmware over UART](docs/reading-original-firmware.jpg) Dumping the stock firmware over UART before replacing the module — this is where the BL0937 calibration constants came from |
 | ![XIAO wired to the plug board](docs/rewire-old-socket-new-xiao.jpg) The XIAO wired to the plug board's header in place of the UAM023 | ![Finished conversion, powered up](docs/replacement-complete.jpg) Finished conversion, powered up: the plug board's blue LED lit via the XIAO |
 
+### In Home Assistant
+
+![Device page in Home Assistant, showing the switch control, live power/energy sensors, and effective current/voltage diagnostics](docs/homeassistant.png)
+
 ## Prerequisites
 
 nRF Connect SDK **v3.4.0** at `/home/eric/ncs`, toolchain `fbf7391cab`. Not on
