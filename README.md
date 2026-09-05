@@ -1,4 +1,4 @@
-# uascent-matter-plug
+# Matter Smart Plug Retrofit
 
 Firmware turning a **Seeed XIAO nRF52840 Sense** into a **Matter smart plug**.
 
@@ -12,7 +12,9 @@ vendor's cloud.
 > reports live power/voltage/current/energy over Matter — confirmed against a
 > live Home Assistant instance. What has not happened yet is a mains bring-up:
 > the BL0937 calibration constants and the reported accuracy are unverified,
-> and the over-power trip has never fired. See [Current state](#current-state).
+> and the over-power trip has never fired. See
+> [docs/smart-plug-plan.md](docs/smart-plug-plan.md) for the bring-up
+> procedure.
 
 ## ⚠️ Mains safety
 
@@ -71,6 +73,16 @@ LED 1 sits on the relay drive net and follows it in hardware.
 | Paired, load on | on | off | green |
 | Paired, load off | off | off | off |
 | Fault | mirrors relay | fast blink | red, fast blink |
+
+### Build photos
+
+The donor plug before and during conversion:
+
+| | |
+| --- | --- |
+| ![Donor board, front](docs/top-pcb-view-original.jpg) Donor board (WK38-V20), front — relay, meter chip, BL0937 pins, and the UAM023 Wi-Fi module socketed at bottom | ![Donor board, back](docs/back-pcb-view-original.jpg) Same board, back |
+| ![Desoldered UAM023 module](docs/desoldered-original-mcu.jpg) The UAM023 Wi-Fi module desoldered from the header the XIAO now plugs into | ![Reading the stock firmware over UART](docs/reading-original-firmware.jpg) Dumping the stock firmware over UART before replacing the module — this is where the BL0937 calibration constants came from |
+| ![XIAO wired to the plug board](docs/rewire-old-socket-new-xiao.jpg) The XIAO wired to the plug board's header in place of the UAM023 | ![Finished conversion, powered up](docs/replacement-complete.jpg) Finished conversion, powered up: the plug board's blue LED lit via the XIAO |
 
 ## Prerequisites
 
@@ -232,62 +244,10 @@ These are Matter's **test defaults** — fine for the bench, change them
 (`prj.conf`) before anything real. The firmware also prints the code and a QR
 payload to the console at boot.
 
-## Current state
-
-| Implemented and confirmed | Implemented, not hardware-verified | Not yet |
-| --- | --- | --- |
-| Commissions onto a Matter fabric | BL0937 pulse counting, unit conversion | Calibration against real mains |
-| OnOff both ways: controller writes drive the relay, the button reports back | Persisted OnOff and cumulative energy survive a power cut | Measured (rather than placeholder) accuracy figures |
-| ElectricalPowerMeasurement: live power/voltage/current, seen by Home Assistant | Over-power trip (never fired) | |
-| ElectricalEnergyMeasurement: cumulative energy, readable and reporting | Relay/LED GPIO wiring against the real header (see [Hardware](#hardware)) | |
-| Long-press factory reset | | |
-
-Confirmed live: pairing this firmware into the user's Home Assistant produced
-a device with switch, power, voltage and current entities discovered straight
-from the data model. What is genuinely outstanding is a mains bring-up — the
-BL0937 calibration constants were recovered from the stock firmware's flash
-and have never been checked against a real load, so the numbers those
-entities report should not be trusted yet, and the over-power protection that
-depends on the same constants has never been exercised. See
-[docs/smart-plug-plan.md](docs/smart-plug-plan.md) for the bring-up procedure.
-
-Footprint: 668,108 B flash (82.80% of the 788 KB app partition), 183,316 B
-RAM (69.93%). `CONFIG_LTO=y` is required to fit.
-
-## Why this board is configured oddly
-
-Notes for anyone changing the build. Each of these is load-bearing.
-
-**Flashing/boot.** The board's UF2 bootloader leaves no room for the usual
-Matter update machinery, so it is all disabled — and each has to be disabled a
-specific way:
-
-* `SB_CONFIG_BOOTLOADER_NONE=y` — no MCUboot.
-* `CONFIG_CHIP_FACTORY_DATA_NONE=y`, `CONFIG_CHIP_BOOTLOADER_NONE=y` — these
-  are Kconfig *choices*, so you pick the "none" branch rather than writing
-  `=n`, which would not work.
-* `SB_CONFIG_MATTER_OTA=n` must be in **`sysbuild.conf`**, not `prj.conf` —
-  sysbuild overwrites the `prj.conf` value afterwards. This was the
-  long-standing blocker on building Matter for this board.
-
-Consequence: no over-the-air updates. Flash over UF2.
-
-**Console.** One USB serial port shared by everything, so:
-
-* Matter shell off (`CONFIG_CHIP_LIB_SHELL=n`) — it assumes its own port and
-  garbles the log otherwise.
-* `CONFIG_LOG_MODE_DEFERRED=y` — the default drops messages under load, which
-  cut off the pairing code during boot.
-* Do **not** enable `CONFIG_USB_DEVICE_STACK`. This board uses the newer USB
-  stack; enabling both breaks the link.
-
-**Board target** is `xiao_ble` (plain, no IMU/microphone) — confirmed by
-physical inspection. Both variants share the same D0–D10 connector pinout,
-so this only matters for the unused IMU/microphone peripherals.
-
 ## Docs
 
 * [docs/smart-plug-plan.md](docs/smart-plug-plan.md) — full design, bring-up
   order, and what is left to do.
 * [docs/pinout.md](docs/pinout.md) — the XIAO module's own pin reference.
-* [CLAUDE.md](CLAUDE.md) — toolchain setup details.
+* [CLAUDE.md](CLAUDE.md) — build/board internals and current implementation
+  status, for anyone changing the firmware.

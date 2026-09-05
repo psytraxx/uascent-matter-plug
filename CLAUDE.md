@@ -115,4 +115,24 @@ expanded into the form `GPIO_DT_SPEC_GET()` needs, and the build fails.
 The board layer's function button is `DK_BTN1`, i.e. the first `/buttons`
 child. With only one button declared, `DK_BTN2_MSK` can never fire.
 
-Flash is ~83% full, so `CONFIG_LTO=y` is required to fit.
+Flash is ~83% full, so `CONFIG_LTO=y` is required to fit. Measured footprint:
+668,108 B flash (82.80% of the 788 KB app partition), 183,316 B RAM (69.93%).
+
+## Current implementation status
+
+| Implemented and confirmed | Implemented, not hardware-verified | Not yet |
+| --- | --- | --- |
+| Commissions onto a Matter fabric | BL0937 pulse counting, unit conversion | Calibration against real mains |
+| OnOff both ways: controller writes drive the relay, the button reports back | Persisted OnOff and cumulative energy survive a power cut | Measured (rather than placeholder) accuracy figures |
+| ElectricalPowerMeasurement: live power/voltage/current, seen by Home Assistant | Over-power trip (never fired) | |
+| ElectricalEnergyMeasurement: cumulative energy, readable and reporting | Relay/LED GPIO wiring against the real header | |
+| Long-press factory reset | | |
+
+Confirmed live: pairing this firmware into Home Assistant produced a device
+with switch, power, voltage and current entities discovered straight from the
+data model. What is genuinely outstanding is a mains bring-up — the BL0937
+calibration constants were recovered from the stock firmware's flash and have
+never been checked against a real load, so the numbers those entities report
+should not be trusted yet, and the over-power protection that depends on the
+same constants has never been exercised. See `docs/smart-plug-plan.md` for
+the bring-up procedure.
