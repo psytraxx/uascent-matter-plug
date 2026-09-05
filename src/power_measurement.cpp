@@ -9,6 +9,7 @@
 #include <app/server/Server.h>
 #include <app/util/attribute-storage.h>
 #include <lib/support/BitMask.h>
+#include <platform/KeyValueStoreManager.h>
 
 #include <zephyr/logging/log.h>
 
@@ -165,6 +166,72 @@ int64_t sLastReportMs;
  * enough resolution to track consumption over time. */
 constexpr int64_t kEnergyReportIntervalMs = 60'000;
 
+/* sCumulativeEnergyMwh is otherwise a RAM-only running total that resets to
+ * zero on every reboot -- not acceptable for an attribute the spec expects
+ * to be monotonic across the device's life. Persisted through the Matter
+ * stack's own KeyValueStoreMgr(), which on this board is backed by Zephyr's
+ * settings/NVS partition -- no separate storage handler is set up here.
+ *
+ * Writing on every energy report (kEnergyReportIntervalMs, 60 s) would be
+ * ~1440 flash writes/day; NVS wear-levels but that is still worth bounding.
+ * Instead write when the accumulated delta since the last write passes
+ * kEnergyPersistThresholdMwh *and* at least kEnergyPersistMinIntervalMs has
+ * elapsed, or unconditionally once kEnergyPersistMaxIntervalMs has elapsed
+ * with any nonzero delta. The threshold+min-interval pair caps the worst
+ * case (continuous full-rating draw) at a little over 2 writes/hour; the
+ * max-interval floor bounds staleness for a plug drawing only a trickle.
+ * Energy lost to a hard power cut is bounded by
+ * max(kEnergyPersistThresholdMwh, kEnergyPersistMinIntervalMs at the
+ * current power) -- this board has no brown-out hold-up budget to do
+ * better than that. */
+constexpr char kEnergyKvsKey[] = "uam-plug/cum-energy-mwh";
+constexpr int64_t kEnergyPersistThresholdMwh = 100'000; /* 100 Wh */
+constexpr int64_t kEnergyPersistMinIntervalMs = 600'000; /* 10 min */
+constexpr int64_t kEnergyPersistMaxIntervalMs = 21'600'000; /* 6 h */
+
+int64_t sLastPersistedEnergyMwh;
+int64_t sLastPersistMs;
+
+void LoadCumulativeEnergy()
+{
+	int64_t stored = 0;
+	CHIP_ERROR err = chip::DeviceLayer::PersistedStorage::KeyValueStoreMgr().Get(kEnergyKvsKey, &stored);
+	if (err == CHIP_NO_ERROR && stored > 0) {
+		sCumulativeEnergyMwh = stored;
+	}
+	/* CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND on first boot, or a
+	 * negative/corrupt read, both leave sCumulativeEnergyMwh at its
+	 * zero-initialised default -- monotonicity matters more here than
+	 * salvaging a damaged value. */
+	sLastPersistedEnergyMwh = sCumulativeEnergyMwh;
+}
+
+void PersistCumulativeEnergyIfDue(int64_t nowMs)
+{
+	const int64_t deltaMwh = sCumulativeEnergyMwh - sLastPersistedEnergyMwh;
+	if (deltaMwh <= 0) {
+		return;
+	}
+
+	const int64_t sincePersistMs = nowMs - sLastPersistMs;
+	const bool thresholdDue =
+		deltaMwh >= kEnergyPersistThresholdMwh && sincePersistMs >= kEnergyPersistMinIntervalMs;
+	const bool maxIntervalDue = sincePersistMs >= kEnergyPersistMaxIntervalMs;
+	if (!thresholdDue && !maxIntervalDue) {
+		return;
+	}
+
+	CHIP_ERROR err =
+		chip::DeviceLayer::PersistedStorage::KeyValueStoreMgr().Put(kEnergyKvsKey, sCumulativeEnergyMwh);
+	if (err != CHIP_NO_ERROR) {
+		LOG_ERR("Failed to persist cumulative energy: %" CHIP_ERROR_FORMAT, err.Format());
+		return;
+	}
+
+	sLastPersistedEnergyMwh = sCumulativeEnergyMwh;
+	sLastPersistMs = nowMs;
+}
+
 /* Storing a value in the delegate does not tell subscribers anything -- the
  * cluster only reads it when something marks the attribute dirty. Without
  * that, a subscriber learns about a jump from 0 W to 2000 W no sooner than
@@ -277,6 +344,8 @@ CHIP_ERROR PowerMeasurementInit(EndpointId endpoint)
 		return err;
 	}
 
+	LoadCumulativeEnergy();
+
 	return CHIP_NO_ERROR;
 }
 
@@ -309,6 +378,8 @@ void PowerMeasurementUpdate(int64_t activePowerMw, int64_t rmsVoltageMv, int64_t
 		 * this poll rate; would need wider intermediates for a much
 		 * higher-power or much-less-frequently-polled design. */
 		sCumulativeEnergyMwh += (avgPowerMw * elapsedMs) / 3'600'000;
+
+		PersistCumulativeEnergyIfDue(nowMs);
 
 		/* Accumulation above is unconditional so the running total stays
 		 * correct, but the event is only worth generating when someone

@@ -30,5 +30,9 @@ CHIP_ERROR PowerMeasurementInit(chip::EndpointId endpoint);
  * ReportIfMoved() in the .cpp); and EEM's cumulative energy by integrating
  * activePowerMw over the elapsed time since the previous call, also
  * dirty-marked on every call that reports. First call after init only primes
- * the integrator; it reports zero elapsed energy. */
+ * the integrator; it reports zero elapsed energy.
+ *
+ * The cumulative energy total is also periodically written to the KVS (see
+ * PersistCumulativeEnergyIfDue() in the .cpp) so it survives a reboot; this
+ * function's caller does not need to do anything for that to happen. */
 void PowerMeasurementUpdate(int64_t activePowerMw, int64_t rmsVoltageMv, int64_t rmsCurrentMa);
