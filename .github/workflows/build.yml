@@ -8,13 +8,32 @@
 # The image does NOT ship the SDK sources (~4.7 GB), so those are fetched
 # with west and cached. Compiles go through ccache, which the image also
 # ships and scripts/env.sh already puts on PATH.
+#
+# `paths:` is an allowlist, not an ignore list: a doc-only change (README.md,
+# docs/**, CLAUDE.md) or an edit under temp/ (stock-firmware forensics, not
+# part of the build) does not queue this ~10+ minute job at all. Listed here
+# is everything that actually affects the firmware image, plus this workflow
+# file itself so a CI change gets tested. workflow_dispatch has no path
+# filter and always runs, for a manual rebuild.
 
 name: build
 
 on:
   push:
     branches: [main]
+    paths: &source-paths
+      - src/**
+      - boards/**
+      - scripts/**
+      - CMakeLists.txt
+      - Kconfig
+      - Kconfig.sysbuild
+      - prj.conf
+      - sysbuild.conf
+      - VERSION
+      - .github/workflows/build.yml
   pull_request:
+    paths: *source-paths
   workflow_dispatch:
 
 # A newer push to the same branch makes an in-flight build obsolete. Don't
