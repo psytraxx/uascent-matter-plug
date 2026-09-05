@@ -562,12 +562,14 @@ rest are recorded so they are not rediscovered.
   layer's function button. The dimmer timers/handlers were deleted outright
   rather than left as stubs; git history has them if needed.
 
-**Known and deliberate:**
+**Known and deliberate, since resolved:**
 
-* `RelaySet()` has no callers. OnOff commands from a controller return
-  Success and update the attribute but do not switch the relay — the
-  `MatterPostAttributeChangeCallback` bridge is Phase 2. **This will look like
-  working On/Off in a controller UI**, so do not treat that as a passing test.
+* `RelaySet()` had no callers at this point in the review (Step A, before
+  Phase 2). OnOff commands from a controller returned Success and updated the
+  attribute but did not switch the relay, since the
+  `MatterPostAttributeChangeCallback` bridge did not exist yet. Resolved by
+  Phase 2 (`src/zcl_callbacks.cpp`); left here so the gap this note originally
+  flagged is not rediscovered as a live bug.
 
 **Watch items:**
 

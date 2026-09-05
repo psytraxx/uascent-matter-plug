@@ -7,9 +7,12 @@ board keeps doing the electrical work — relay, power meter, button, LED — an
 this board becomes its brain, speaking Matter over Thread instead of the
 vendor's cloud.
 
-> **Status: not finished.** The device commissions and the data model is in
-> place, but the relay is not yet wired to Matter commands and the power meter
-> is not implemented. See [Current state](#current-state).
+> **Status: functional, not hardware-verified.** The device commissions,
+> switches the relay both from a controller and from the plug's button, and
+> reports live power/voltage/current/energy over Matter — confirmed against a
+> live Home Assistant instance. What has not happened yet is a mains bring-up:
+> the BL0937 calibration constants and the reported accuracy are unverified,
+> and the over-power trip has never fired. See [Current state](#current-state).
 
 ## ⚠️ Mains safety
 
@@ -216,18 +219,25 @@ payload to the console at boot.
 
 ## Current state
 
-| Works | Not yet |
-| --- | --- |
-| Commissions onto a Matter fabric | Matter On/Off actually switching the relay |
-| Data model: On/Off + power + energy | Button toggling the relay |
-| Relay driver, LED indication | Reading the BL0937 power meter |
-| Long-press factory reset | |
+| Implemented and confirmed | Implemented, not hardware-verified | Not yet |
+| --- | --- | --- |
+| Commissions onto a Matter fabric | BL0937 pulse counting, unit conversion | Calibration against real mains |
+| OnOff both ways: controller writes drive the relay, the button reports back | Persisted OnOff and cumulative energy survive a power cut | Measured (rather than placeholder) accuracy figures |
+| ElectricalPowerMeasurement: live power/voltage/current, seen by Home Assistant | Over-power trip (never fired) | |
+| ElectricalEnergyMeasurement: cumulative energy, readable and reporting | Relay/LED GPIO wiring against the real header (see [Hardware](#hardware)) | |
+| Long-press factory reset | | |
 
-Sending On/Off from a controller **reports success but does nothing** — the
-cluster is not yet connected to the relay. That is the next step.
+Confirmed live: pairing this firmware into the user's Home Assistant produced
+a device with switch, power, voltage and current entities discovered straight
+from the data model. What is genuinely outstanding is a mains bring-up — the
+BL0937 calibration constants were recovered from the stock firmware's flash
+and have never been checked against a real load, so the numbers those
+entities report should not be trusted yet, and the over-power protection that
+depends on the same constants has never been exercised. See
+[docs/smart-plug-plan.md](docs/smart-plug-plan.md) for the bring-up procedure.
 
-Footprint: ~654 KB flash (83% of the 788 KB app partition), ~178 KB RAM.
-`CONFIG_LTO=y` is required to fit.
+Footprint: 668,108 B flash (82.80% of the 788 KB app partition), 183,316 B
+RAM (69.93%). `CONFIG_LTO=y` is required to fit.
 
 ## Why this board is configured oddly
 
