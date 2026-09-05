@@ -171,17 +171,16 @@ the board devicetree** — verified absent from `xiao_ble_common.dtsi`:
 | P0.31 | VBAT_ADC (analog) | unused — no battery in a mains plug |
 | P0.14 | READ_EN (low = enable battery read) | unused |
 | P0.13 | CHG_CTRL (high = fast charge) | unused |
-| P0.17 | CHG_STAT / charge LED | **free for the plug's status LED** |
+| P0.17 | CHG_STAT / charge LED | free, but not used — see below |
 | P0.09 / P0.10 | NFC1 / NFC2 | free, but need `CONFIG_NFCT_PINS_AS_GPIOS` |
 
-**This frees up a connector pad.** P0.17 drives the module's own charge LED and is
-otherwise idle in a mains application, so one of the plug's two LEDs can be driven
-from it instead of a connector pad — leaving that pad available. The *second* plug
-LED still needs a connector pad of its own; see the revised signal table below (now
-seven signals, not six).
-
-Since P0.17 is undeclared in the board devicetree, the overlay must define it as a
-plain `gpio-leds` node; there is no existing alias to reuse.
+**Considered and rejected: driving a plug LED from P0.17.** P0.17 drives the
+module's own charge LED and is otherwise idle in a mains application, so an
+earlier revision put one of the plug's LEDs on it to save a connector pad.
+That is no longer needed: tracing showed plug LED 1 sits on the relay drive
+net and needs no GPIO at all (see below), leaving six signals against eleven
+pads. With no pad pressure, an underside solder joint that cannot be
+inspected is not worth its cost, so every signal stays on the edge connector.
 
 **Do not repurpose P0.13/P0.14 casually.** They control the battery charger IC; with
 no battery attached they are harmless, but leaving them at their reset state is the
@@ -217,8 +216,8 @@ regresses, a sealed unit has no way back to commissioning short of opening it.
 Note `gpio-as-nreset` means P0.18 is unavailable as a GPIO regardless; it is not on
 the connector, so this costs nothing.
 
-Seven signals are needed — CF, CF1, SEL, relay, button, and **two** plug LEDs —
-comfortably within the 11 pads. Suggested default assignment (revise to match
+Six signals are needed — CF, CF1, SEL, relay, button, and the network LED
+(plug LED 1 needs no GPIO; see below) — comfortably within the 11 pads. Suggested default assignment (revise to match
 tracing, and prefer keeping CF/CF1 on pads that support GPIOTE-in events; all
 nRF52840 pins do):
 
