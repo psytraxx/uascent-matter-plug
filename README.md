@@ -186,22 +186,24 @@ scripts/flash.sh -b     # double-tap RESET when asked
 scripts/monitor.sh
 ```
 
-### Hardware variants
+### Multiple units
 
-`scripts/build.sh` / `scripts/flash.sh` build the default wiring and pairing
-code. A physically different unit (different GPIO wiring, distinct pairing
-code so it can't be confused with another unit while commissioning) is a
-*variant*, selected with `VARIANT`:
+Every unit shares the same XIAO-side GPIO wiring (D0–D5, see the table
+above) — the retrofit is hand-soldered per plug, so whatever physical pad a
+given donor board routes a signal to just gets wired to that fixed pin;
+there's nothing to rebuild for a differently-wired donor board.
+
+What does need to differ per unit is the **pairing code**, so two plugs
+aren't ambiguous while commissioning. Build that with `VARIANT`:
 
 ```sh
 VARIANT=v2 scripts/build.sh -b
 VARIANT=v2 scripts/flash.sh -b
 ```
 
-Each variant builds into its own directory (`build_<variant>`), so switching
-`VARIANT` never flashes a stale pinout left over from another one. See
-`boards/xiao_ble_v2.overlay` / `boards/xiao_ble_v2.conf` and the "Hardware
-variants" section of `CLAUDE.md` for how to add another one.
+Each variant builds into its own directory (`build_<variant>`). See
+`boards/xiao_ble_v2.conf` and the "Hardware variants" section of `CLAUDE.md`
+for how to give another unit its own pairing code.
 
 ### Flashing
 
@@ -233,6 +235,10 @@ project pins (`fbf7391cab`) under `/opt/ncs/toolchains/` — the same layout
 `scripts/env.sh` expects — so CI runs the same scripts you do, with only
 `NCS_ROOT=/opt/ncs` set differently.
 
+It builds both units as a matrix (`default` and `v2`, i.e. `VARIANT` unset
+and `VARIANT=v2`), so a change to either unit's pairing-code fragment is
+proven to build, not just the one a developer happens to build locally.
+
 Two caches keep it quick, since a Matter build from cold is slow:
 
 * **The SDK** (~4.7 GB) is not in the image, so it is fetched with `west` and
@@ -243,9 +249,10 @@ Two caches keep it quick, since a Matter build from cold is slow:
   falls back to the branch, then `main`.
 
 Each run publishes `zephyr.uf2`, `zephyr.hex`, and the resolved `.config` as
-artifacts, and prints flash/RAM usage to the run summary. That last number is
-worth watching: flash sits around 83% full, and `CONFIG_LTO=y` is required to
-fit at all, so a change that pushes it over shows up as a failed link.
+artifacts, one set per variant (`firmware-default-<sha>`, `firmware-v2-<sha>`),
+and prints flash/RAM usage to the run summary. That last number is worth
+watching: flash sits around 83% full, and `CONFIG_LTO=y` is required to fit
+at all, so a change that pushes it over shows up as a failed link.
 
 ## Pairing
 
@@ -262,8 +269,8 @@ Vendor / Product ID: 0xFFF1 / 0x8004
 ```
 
 These are Matter's **test defaults** — fine for the bench, change them
-(`prj.conf`) before anything real. The firmware also prints the code and a QR
-payload to the console at boot.
+(`boards/xiao_ble.conf`) before anything real. The firmware also prints the
+code and a QR payload to the console at boot.
 
 ## Docs
 

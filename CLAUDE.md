@@ -29,36 +29,49 @@ Matter builds are memory-hungry with LTO and get OOM-killed (exit 137) on this
 machine at default parallelism. Pass
 `-- -DCMAKE_JOB_POOLS="compile=4;link=1"` for those.
 
-## Hardware variants
+## Hardware variants (pairing code only, not GPIO)
 
-`xiao_ble` stays the only Zephyr `BOARD` target; a second physical unit with
-different header wiring is a *variant* of it, selected with Zephyr's
-`FILE_SUFFIX` mechanism rather than a new board definition:
+`xiao_ble` stays the only Zephyr `BOARD` target, and **`boards/xiao_ble.overlay`
+is shared by every physical unit** — the XIAO is hand-soldered to each plug's
+own PCB (not plugged into a compatible module footprint), so the pin choices
+in that overlay (D0=button, D1=network LED, D2=BL0937 CF, D3=CF1, D4=SEL,
+D5=relay) are ours to keep fixed regardless of which board it's soldered
+into. Two donor boards can (and do) route these signals to completely
+different physical pads/module GPIOs internally — that's just a difference in
+*which wire goes where* during assembly, documented per-board under `docs/`
+(see `docs/original-pcb-trace.md` for the first one), never a firmware or
+devicetree change.
 
-* `boards/xiao_ble.overlay` / `boards/xiao_ble.conf` — default variant.
-* `boards/xiao_ble_v2.overlay` / `boards/xiao_ble_v2.conf` — second variant
-  (GPIO scaffold only until real v2 hardware is traced; different
-  discriminator so it can't be confused with a default-variant unit during
-  commissioning).
+What legitimately differs per physical unit is the **pairing code** — two
+units need distinct discriminators/passcodes so they aren't ambiguous during
+commissioning. That alone is a *variant*, selected with Zephyr's `FILE_SUFFIX`
+mechanism:
+
+* `boards/xiao_ble.conf` — default unit's discriminator/passcode/BT name.
+* `boards/xiao_ble_v2.conf` — a second unit's, distinct discriminator.
 
 Build a variant with `west build -b xiao_ble -- -DFILE_SUFFIX=<name>`, or via
 the scripts with `VARIANT=<name> scripts/build.sh` /
 `VARIANT=<name> scripts/flash.sh` (`scripts/env.sh` puts each variant in its
-own `build_<name>` directory so switching variants never flashes a stale
-pinout from another one's cached build).
+own `build_<name>` directory). There is no `boards/xiao_ble_<variant>.overlay`
+for any variant — Zephyr's file-suffix lookup falls back to the unsuffixed
+`boards/xiao_ble.overlay` when a suffixed one doesn't exist, which is exactly
+what we want here.
 
 `boards/xiao_ble.conf` (and `boards/xiao_ble_<variant>.conf`) is a Zephyr
 board Kconfig fragment: merged on top of `prj.conf` automatically, and with
 `FILE_SUFFIX` set, the suffixed one is used instead. It's kept to only the
 settings that must differ per physical unit — onboarding discriminator/
 passcode and `CONFIG_BT_DEVICE_NAME` — so `prj.conf` stays the single source
-for everything common to all variants. `sysbuild.conf` has no per-variant
-override; both variants share it as-is (no `sysbuild_<variant>.conf` needed
-unless a future variant needs different sysbuild settings).
+for everything common to all units. `sysbuild.conf` has no per-variant
+override; all units share it as-is.
 
-To add another variant: copy `boards/xiao_ble_v2.{overlay,conf}` to
-`boards/xiao_ble_<name>.{overlay,conf}`, update the pins and discriminator,
-and build with `FILE_SUFFIX=<name>`.
+To add another unit's pairing code: copy `boards/xiao_ble_v2.conf` to
+`boards/xiao_ble_<name>.conf`, pick a new discriminator, and build with
+`FILE_SUFFIX=<name>`. Do **not** add a matching `.overlay` unless a future
+unit genuinely needs different XIAO-side pin numbers (e.g. a pin conflict
+with some other peripheral) — a different donor-board pinout is not that
+case.
 
 ## Hardware
 
