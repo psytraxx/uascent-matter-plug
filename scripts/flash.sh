@@ -1,14 +1,17 @@
 #!/bin/sh
 # Flash the firmware over the Adafruit UF2 bootloader.
 #
-#   scripts/flash.sh           flash build/<image>/zephyr/zephyr.uf2
-#   scripts/flash.sh -b        build first, then flash
+#   scripts/flash.sh              flash $BUILD_DIR/<image>/zephyr/zephyr.uf2
+#   scripts/flash.sh -b           build first, then flash
+#   VARIANT=v2 scripts/flash.sh   flash a different hardware variant's build
+#                                 (see scripts/env.sh)
 #
 # The board has no on-board debug probe, so `west flash` does not work: the
 # UF2 file is copied to the mass-storage drive the bootloader exposes.
 
 set -e
 cd "$(dirname "$0")/.."
+. scripts/env.sh
 
 case "$1" in
 	-b|--build) scripts/build.sh || exit 1; shift ;;
@@ -16,10 +19,10 @@ esac
 
 # The image directory is named by sysbuild, so match it by glob rather than
 # hard-coding a name that changes with the project.
-UF2=$(ls build/*/zephyr/zephyr.uf2 2>/dev/null | head -1)
+UF2=$(ls "$BUILD_DIR"/*/zephyr/zephyr.uf2 2>/dev/null | head -1)
 
 if [ -z "$UF2" ]; then
-	echo "error: no build/*/zephyr/zephyr.uf2 -- run scripts/build.sh first" >&2
+	echo "error: no $BUILD_DIR/*/zephyr/zephyr.uf2 -- run scripts/build.sh first" >&2
 	exit 1
 fi
 

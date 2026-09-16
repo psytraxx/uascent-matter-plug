@@ -29,6 +29,37 @@ Matter builds are memory-hungry with LTO and get OOM-killed (exit 137) on this
 machine at default parallelism. Pass
 `-- -DCMAKE_JOB_POOLS="compile=4;link=1"` for those.
 
+## Hardware variants
+
+`xiao_ble` stays the only Zephyr `BOARD` target; a second physical unit with
+different header wiring is a *variant* of it, selected with Zephyr's
+`FILE_SUFFIX` mechanism rather than a new board definition:
+
+* `boards/xiao_ble.overlay` / `boards/xiao_ble.conf` — default variant.
+* `boards/xiao_ble_v2.overlay` / `boards/xiao_ble_v2.conf` — second variant
+  (GPIO scaffold only until real v2 hardware is traced; different
+  discriminator so it can't be confused with a default-variant unit during
+  commissioning).
+
+Build a variant with `west build -b xiao_ble -- -DFILE_SUFFIX=<name>`, or via
+the scripts with `VARIANT=<name> scripts/build.sh` /
+`VARIANT=<name> scripts/flash.sh` (`scripts/env.sh` puts each variant in its
+own `build_<name>` directory so switching variants never flashes a stale
+pinout from another one's cached build).
+
+`boards/xiao_ble.conf` (and `boards/xiao_ble_<variant>.conf`) is a Zephyr
+board Kconfig fragment: merged on top of `prj.conf` automatically, and with
+`FILE_SUFFIX` set, the suffixed one is used instead. It's kept to only the
+settings that must differ per physical unit — onboarding discriminator/
+passcode and `CONFIG_BT_DEVICE_NAME` — so `prj.conf` stays the single source
+for everything common to all variants. `sysbuild.conf` has no per-variant
+override; both variants share it as-is (no `sysbuild_<variant>.conf` needed
+unless a future variant needs different sysbuild settings).
+
+To add another variant: copy `boards/xiao_ble_v2.{overlay,conf}` to
+`boards/xiao_ble_<name>.{overlay,conf}`, update the pins and discriminator,
+and build with `FILE_SUFFIX=<name>`.
+
 ## Hardware
 
 Board target is **`xiao_ble`** (plain, no IMU/microphone) — confirmed by

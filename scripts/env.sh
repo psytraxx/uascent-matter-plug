@@ -37,3 +37,17 @@ export ZEPHYR_SDK_INSTALL_DIR="$T/opt/zephyr-sdk"
 export ZEPHYR_BASE="$NCS_ROOT/$NCS_VERSION/zephyr"
 
 export BOARD=${BOARD:-xiao_ble}
+
+# Hardware variant of the fixed BOARD target above (different GPIO wiring,
+# different pairing code -- see boards/xiao_ble_v2.overlay and
+# boards/xiao_ble_v2.conf). Empty selects the default variant; set VARIANT=v2
+# (or add another boards/xiao_ble_<name>.{overlay,conf} pair and set VARIANT
+# to its name) to build a different one.
+export VARIANT=${VARIANT:-}
+
+# Each variant gets its own build directory -- they differ in devicetree
+# overlay, and reusing one dir across variants risks flashing a stale pinout
+# after switching VARIANT without a pristine rebuild. "build_<variant>"
+# matches the build_*/ pattern already in .gitignore; the default variant
+# keeps plain "build" so existing checkouts/scripts are unaffected.
+export BUILD_DIR=${BUILD_DIR:-build${VARIANT:+_$VARIANT}}

@@ -1,0 +1,76 @@
+/*
+ * Board wiring for hardware variant "v2" -- same xiao_ble target and BL0937
+ * retrofit as boards/xiao_ble.overlay, but for a plug whose header traces to
+ * different XIAO pins. See boards/xiao_ble.overlay for the full rationale
+ * behind using gpio-leds/gpio-keys bindings for non-LED/non-button signals,
+ * the pad budget, and the power/no-connect notes -- none of that is repeated
+ * here.
+ *
+ * TODO: this is a scaffold, not a verified pinout. It currently duplicates
+ * the default variant's pin assignments pin-for-pin. Before using it on real
+ * v2 hardware:
+ *   1. Trace the v2 plug's header the same way docs/original-pcb-trace.md
+ *      describes for the original, and update every `gpios = <&gpio0 N ...>`
+ *      below to the pins actually wired on that board.
+ *   2. Update the pin-mapping table in this comment block and in README.md /
+ *      docs/smart-plug-plan.md once the real pins are known.
+ *   3. Confirm LED and button polarity (GPIO_ACTIVE_LOW / GPIO_ACTIVE_HIGH)
+ *      against the v2 hardware; don't assume it matches the default variant.
+ *
+ * Build with: west build -b xiao_ble -- -DFILE_SUFFIX=v2
+ */
+
+/ {
+	buttons {
+		compatible = "gpio-keys";
+
+		button0: button_0 {
+			/* TODO: confirm/replace pin for v2 hardware. */
+			gpios = <&gpio0 2 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Plug switch (D0 <- H5)";
+		};
+	};
+
+	bl0937_pulses: bl0937_pulses {
+		compatible = "gpio-keys";
+
+		bl0937_cf: bl0937_cf {
+			/* TODO: confirm/replace pin for v2 hardware. */
+			gpios = <&gpio0 28 GPIO_ACTIVE_HIGH>;
+			label = "BL0937 CF (D2)";
+		};
+
+		bl0937_cf1: bl0937_cf1 {
+			/* TODO: confirm/replace pin for v2 hardware. */
+			gpios = <&gpio0 29 GPIO_ACTIVE_HIGH>;
+			label = "BL0937 CF1 (D3)";
+		};
+	};
+
+	aliases {
+		sw0 = &button0;
+		led4 = &plug_led_network;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		plug_led_network: plug_led_network {
+			/* TODO: confirm/replace pin for v2 hardware. */
+			gpios = <&gpio0 3 GPIO_ACTIVE_LOW>;
+			label = "Plug LED 2 (network state, D1)";
+		};
+
+		relay_drive: relay_drive {
+			/* TODO: confirm/replace pin for v2 hardware. */
+			gpios = <&gpio0 5 GPIO_ACTIVE_HIGH>;
+			label = "Relay drive (D5 -> H2/P6)";
+		};
+
+		bl0937_sel: bl0937_sel {
+			/* TODO: confirm/replace pin for v2 hardware. */
+			gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;
+			label = "BL0937 SEL (D4)";
+		};
+	};
+};

@@ -186,6 +186,23 @@ scripts/flash.sh -b     # double-tap RESET when asked
 scripts/monitor.sh
 ```
 
+### Hardware variants
+
+`scripts/build.sh` / `scripts/flash.sh` build the default wiring and pairing
+code. A physically different unit (different GPIO wiring, distinct pairing
+code so it can't be confused with another unit while commissioning) is a
+*variant*, selected with `VARIANT`:
+
+```sh
+VARIANT=v2 scripts/build.sh -b
+VARIANT=v2 scripts/flash.sh -b
+```
+
+Each variant builds into its own directory (`build_<variant>`), so switching
+`VARIANT` never flashes a stale pinout left over from another one. See
+`boards/xiao_ble_v2.overlay` / `boards/xiao_ble_v2.conf` and the "Hardware
+variants" section of `CLAUDE.md` for how to add another one.
+
 ### Flashing
 
 No debug probe on this board, so `west flash` does not work. Flashing is
