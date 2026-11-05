@@ -1,9 +1,11 @@
 # Firmware build for the Matter smart plug.
 #
-# Runs in Nordic's official toolchain image, which ships the exact toolchain
-# hash this project pins (fbf7391cab) at /opt/ncs/toolchains/ -- the same
-# layout scripts/env.sh expects locally, so the scripts run unmodified with
-# NCS_ROOT pointed at /opt/ncs.
+# Runs in Nordic's official toolchain image, which ships one toolchain under
+# /opt/ncs/toolchains/<hash> -- the same layout scripts/env.sh expects
+# locally, so the scripts run unmodified with NCS_ROOT pointed at /opt/ncs.
+# The hash is read from the image rather than pinned here, so a toolchain
+# image bump does not also need a matching hash edit (locally the project
+# uses fbf7391cab, the v3.4.0 toolchain).
 #
 # The image does NOT ship the SDK sources (~4.7 GB), so those are fetched
 # with west and cached. Compiles go through ccache, which the image also
@@ -44,14 +46,13 @@ concurrency:
 
 env:
   NCS_VERSION: v3.4.0
-  NCS_TOOLCHAIN: fbf7391cab
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     container:
-      image: ghcr.io/nrfconnect/sdk-nrf-toolchain:v3.4.0
+      image: ghcr.io/nrfconnect/sdk-nrf-toolchain:v3.4.2
       # The image sets HOME=/opt and activates the toolchain from
       # /opt/toolchain-env.sh via BASH_ENV. Keep HOME so that still works,
       # and so ccache/west find their config where the image expects.
@@ -124,6 +125,10 @@ jobs:
           NCS_ROOT: /opt/ncs
           CCACHE_DIR: /opt/.ccache
         run: |
+          # The image ships exactly one toolchain; use whichever hash it is.
+          NCS_TOOLCHAIN=$(basename "$(find /opt/ncs/toolchains -mindepth 1 -maxdepth 1 -type d | head -n1)")
+          export NCS_TOOLCHAIN
+          echo "Using toolchain $NCS_TOOLCHAIN"
           cd uascent-matter-plug
           # -p: CI always builds from scratch, so the ccache hit rate is the
           # thing that makes this fast, not an incremental build directory.
