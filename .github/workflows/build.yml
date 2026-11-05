@@ -63,7 +63,7 @@ jobs:
 
     steps:
       - name: Check out the application
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: uascent-matter-plug
 
@@ -71,7 +71,7 @@ jobs:
       # when NCS_VERSION does, so it is keyed on the version alone.
       - name: Restore the nRF Connect SDK
         id: sdk-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /opt/ncs/${{ env.NCS_VERSION }}
           key: ncs-sdk-${{ env.NCS_VERSION }}
@@ -90,7 +90,7 @@ jobs:
       # the branch/base prefix as fallback. ccache is what keeps incremental
       # builds short; a cold cache still works, just slower.
       - name: Restore ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /opt/.ccache
           key: ccache-${{ github.ref_name }}-${{ github.sha }}
@@ -165,7 +165,7 @@ jobs:
 
       - name: Upload the firmware
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: firmware-${{ github.sha }}
           path: |
